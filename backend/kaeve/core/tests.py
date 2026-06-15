@@ -75,6 +75,9 @@ class RoleProtectedApiTests(TestCase):
         self.admin_user = get_user_model().objects.create_user(username="manager", password="password")
         self.admin_user.profile.role = UserProfile.Role.ADMIN
         self.admin_user.profile.save()
+        self.manager_user = get_user_model().objects.create_user(username="ops-manager", password="password")
+        self.manager_user.profile.role = UserProfile.Role.MANAGER
+        self.manager_user.profile.save()
         self.field_user = get_user_model().objects.create_user(username="field", password="password")
         self.field_user.profile.role = UserProfile.Role.FIELD_OFFICER
         self.field_user.profile.save()
