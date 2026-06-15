@@ -141,6 +141,60 @@ class TokenAuthTests(TestCase):
         self.user.profile.role = UserProfile.Role.ADMIN
         self.user.profile.save()
 
+    def test_register_creates_user_with_role_and_tokens(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            json.dumps(
+                {
+                    "username": "new-manager",
+                    "email": "new-manager@example.com",
+                    "password": "Password123!",
+                    "role": UserProfile.Role.MANAGER,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        user = get_user_model().objects.get(username="new-manager")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertIn("access", response.json())
+        self.assertIn("refresh", response.json())
+        self.assertEqual(user.profile.role, UserProfile.Role.MANAGER)
+        self.assertEqual(response.json()["user"]["role"], UserProfile.Role.MANAGER)
+
+    def test_register_rejects_invalid_role(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            json.dumps(
+                {
+                    "username": "new-user",
+                    "password": "Password123!",
+                    "role": "owner",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "Invalid role.")
+
+    def test_register_rejects_duplicate_username(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            json.dumps(
+                {
+                    "username": "manager",
+                    "password": "Password123!",
+                    "role": UserProfile.Role.MEMBER,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "Username is already taken.")
+
     def test_login_returns_access_and_refresh_tokens(self):
         response = self.client.post(
             "/api/auth/login/",
