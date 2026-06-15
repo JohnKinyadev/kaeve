@@ -87,6 +87,8 @@ class RoleBasedAdminMixin:
     def has_role_permission(self, request, action):
         if get_user_role(request.user) == ADMIN_ROLE:
             return True
+        if get_user_role(request.user) == MANAGER_ROLE:
+            return action in {"view", "add", "change"}
         return action in self.role_permissions.get(get_user_role(request.user), {}).get(
             self.get_model_name(),
             set(),
