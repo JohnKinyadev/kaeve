@@ -125,7 +125,7 @@ def logout(request):
     return JsonResponse({"detail": "Logged out."})
 
 
-@role_required(ADMIN_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
+@role_required(ADMIN_ROLE, MANAGER_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
 def me(request):
     return JsonResponse(
         {
