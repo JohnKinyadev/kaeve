@@ -121,6 +121,18 @@ class RoleProtectedApiTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
 
+    def test_generate_payouts_rejects_manager_role(self):
+        season = Season.objects.create(
+            name="Fly Crop 2026",
+            season_type=Season.SeasonType.FLY_CROP,
+            start_date=timezone.localdate(),
+        )
+        self.client.login(username="ops-manager", password="password")
+
+        response = self.client.post(f"/api/seasons/{season.id}/generate-payouts/")
+
+        self.assertEqual(response.status_code, 403)
+
 
 class TokenAuthTests(TestCase):
     def setUp(self):
