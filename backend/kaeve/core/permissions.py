@@ -16,7 +16,7 @@ MEMBER_ROLE = UserProfile.Role.MEMBER
 def get_user_role(user):
     if not user.is_authenticated:
         return None
-    if user.is_superuser:
+    if user.is_superuser or user.is_staff:
         return ADMIN_ROLE
     return getattr(getattr(user, "profile", None), "role", None)
 
