@@ -8,6 +8,7 @@ from .models import AuthToken, UserProfile
 
 
 ADMIN_ROLE = UserProfile.Role.ADMIN
+MANAGER_ROLE = UserProfile.Role.MANAGER
 FIELD_OFFICER_ROLE = UserProfile.Role.FIELD_OFFICER
 MEMBER_ROLE = UserProfile.Role.MEMBER
 
