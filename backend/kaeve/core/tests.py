@@ -222,6 +222,27 @@ class TokenAuthTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["role"], UserProfile.Role.ADMIN)
 
+    def test_staff_access_token_is_treated_as_admin_role(self):
+        staff_user = get_user_model().objects.create_user(
+            username="staff-admin",
+            password="password",
+            is_staff=True,
+        )
+
+        login_response = self.client.post(
+            "/api/auth/login/",
+            json.dumps({"username": "staff-admin", "password": "password"}),
+            content_type="application/json",
+        )
+        access_token = login_response.json()["access"]
+
+        response = self.client.get(
+            "/api/dashboard-summary/",
+            HTTP_AUTHORIZATION=f"Bearer {access_token}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
     def test_refresh_token_creates_new_access_token(self):
         login_response = self.client.post(
             "/api/auth/login/",
