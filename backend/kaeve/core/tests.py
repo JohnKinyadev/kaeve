@@ -102,6 +102,13 @@ class RoleProtectedApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_dashboard_allows_manager_role(self):
+        self.client.login(username="ops-manager", password="password")
+
+        response = self.client.get("/api/dashboard-summary/")
+
+        self.assertEqual(response.status_code, 200)
+
     def test_generate_payouts_requires_admin_role(self):
         season = Season.objects.create(
             name="Main Crop 2026",
