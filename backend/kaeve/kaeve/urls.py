@@ -28,6 +28,9 @@ def api_root(request):
                 "health": "/api/health/",
                 "dashboard_summary": "/api/dashboard-summary/",
                 "collection_points": "/api/collection-points/",
+                "token_obtain": "/api/token/",
+                "token_refresh": "/api/token/refresh/",
+                "token_verify": "/api/token/verify/",
                 "admin": "/admin/",
             },
         }
