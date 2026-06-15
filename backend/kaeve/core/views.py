@@ -159,7 +159,7 @@ def dashboard_summary(request):
     return JsonResponse(data)
 
 
-@role_required(ADMIN_ROLE, FIELD_OFFICER_ROLE)
+@role_required(ADMIN_ROLE, MANAGER_ROLE, FIELD_OFFICER_ROLE)
 def season_intake_report(request, season_id):
     deliveries = Delivery.objects.filter(season_id=season_id)
     collection_points = (
