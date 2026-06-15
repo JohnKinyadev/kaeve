@@ -182,7 +182,7 @@ def season_intake_report(request, season_id):
     )
 
 
-@role_required(ADMIN_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
+@role_required(ADMIN_ROLE, MANAGER_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
 def collection_points(request):
     points = CollectionPoint.objects.filter(is_active=True).order_by("name")
     return JsonResponse(
