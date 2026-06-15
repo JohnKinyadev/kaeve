@@ -131,12 +131,12 @@ def me(request):
         {
             "username": request.user.username,
             "email": request.user.email,
-            "role": request.user.profile.role,
+            "role": get_user_role(request.user),
         }
     )
 
 
-@role_required(ADMIN_ROLE, FIELD_OFFICER_ROLE)
+@role_required(ADMIN_ROLE, MANAGER_ROLE, FIELD_OFFICER_ROLE)
 def dashboard_summary(request):
     active_season = Season.objects.filter(is_active=True, is_closed=False).first()
     deliveries = Delivery.objects.all()
