@@ -20,6 +20,57 @@ def health_check(request):
 
 @csrf_exempt
 @require_POST
+def register(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON body."}, status=400)
+
+    username = (payload.get("username") or "").strip()
+    email = (payload.get("email") or "").strip()
+    password = payload.get("password") or ""
+    role = payload.get("role") or UserProfile.Role.MEMBER
+
+    if not username:
+        return JsonResponse({"detail": "Username is required."}, status=400)
+    if not password:
+        return JsonResponse({"detail": "Password is required."}, status=400)
+    if role not in UserProfile.Role.values:
+        return JsonResponse(
+            {
+                "detail": "Invalid role.",
+                "allowed_roles": list(UserProfile.Role.values),
+            },
+            status=400,
+        )
+
+    user_model = get_user_model()
+    if user_model.objects.filter(username=username).exists():
+        return JsonResponse({"detail": "Username is already taken."}, status=400)
+    if email and user_model.objects.filter(email=email).exists():
+        return JsonResponse({"detail": "Email is already taken."}, status=400)
+
+    user = user_model.objects.create_user(
+        username=username,
+        email=email,
+        password=password,
+        is_staff=role == UserProfile.Role.ADMIN,
+        is_superuser=role == UserProfile.Role.ADMIN,
+    )
+    user.profile.role = role
+    user.profile.save(update_fields=["role", "updated_at"])
+
+    response = create_token_pair(user)
+    response["user"] = {
+        "username": user.username,
+        "email": user.email,
+        "role": get_user_role(user),
+    }
+    return JsonResponse(response, status=201)
+
+
+@csrf_exempt
+@require_POST
 def login(request):
     try:
         payload = json.loads(request.body or "{}")
