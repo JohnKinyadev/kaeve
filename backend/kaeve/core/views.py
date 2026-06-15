@@ -1,5 +1,6 @@
 import json
 
+from django.contrib.auth import get_user_model
 from django.contrib.auth import authenticate
 from django.db.models import Count, Sum
 from django.http import JsonResponse
@@ -8,8 +9,8 @@ from django.views.decorators.http import require_POST
 from django.utils import timezone
 
 from .auth_tokens import create_token, create_token_pair, get_active_token
-from .models import AuthToken, CollectionPoint, Delivery, Loan, Member, Season
-from .permissions import ADMIN_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE, role_required
+from .models import AuthToken, CollectionPoint, Delivery, Loan, Member, Season, UserProfile
+from .permissions import ADMIN_ROLE, FIELD_OFFICER_ROLE, MANAGER_ROLE, MEMBER_ROLE, get_user_role, role_required
 from .services import generate_season_payouts
 
 
