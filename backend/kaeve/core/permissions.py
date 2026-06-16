@@ -2,6 +2,7 @@ from functools import wraps
 
 from django.contrib.auth.models import AnonymousUser
 from django.http import JsonResponse
+from rest_framework.permissions import BasePermission
 
 from .auth_tokens import get_active_token
 from .models import AuthToken, UserProfile
@@ -124,3 +125,46 @@ class RoleBasedAdminMixin:
         if model_name in {"delivery", "loan", "payout", "ledgerentry"}:
             return queryset.filter(member__user=request.user)
         return queryset.none()
+
+
+class RoleBasedApiPermission(BasePermission):
+    role_permissions = {
+        FIELD_OFFICER_ROLE: {
+            "member": {"view"},
+            "season": {"view"},
+            "collectionpoint": {"view"},
+            "delivery": {"view", "add", "change"},
+            "loan": {"view"},
+            "inventorystock": {"view"},
+        },
+        MEMBER_ROLE: {
+            "member": {"view"},
+            "delivery": {"view"},
+            "loan": {"view"},
+            "payout": {"view"},
+            "ledgerentry": {"view"},
+        },
+    }
+
+    action_map = {
+        "list": "view",
+        "retrieve": "view",
+        "create": "add",
+        "update": "change",
+        "partial_update": "change",
+        "destroy": "delete",
+    }
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        role = get_user_role(request.user)
+        if role == ADMIN_ROLE:
+            return True
+        if role == MANAGER_ROLE:
+            return self.action_map.get(view.action, "view") in {"view", "add", "change"}
+
+        model_name = view.queryset.model._meta.model_name
+        action = self.action_map.get(view.action, "view")
+        return action in self.role_permissions.get(role, {}).get(model_name, set())

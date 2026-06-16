@@ -7,15 +7,115 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.utils import timezone
+from rest_framework import viewsets
 
 from .auth_tokens import create_token, create_token_pair, get_active_token
-from .models import AuthToken, CollectionPoint, Delivery, Loan, Member, Season, UserProfile
-from .permissions import ADMIN_ROLE, FIELD_OFFICER_ROLE, MANAGER_ROLE, MEMBER_ROLE, get_user_role, role_required
+from .models import (
+    AuthToken,
+    CollectionPoint,
+    Delivery,
+    InventoryStock,
+    LedgerEntry,
+    Loan,
+    Member,
+    MillingBatch,
+    Payout,
+    SaleProceed,
+    Season,
+    UserProfile,
+)
+from .permissions import (
+    ADMIN_ROLE,
+    FIELD_OFFICER_ROLE,
+    MANAGER_ROLE,
+    MEMBER_ROLE,
+    RoleBasedApiPermission,
+    get_user_role,
+    role_required,
+)
+from .serializers import (
+    CollectionPointSerializer,
+    DeliverySerializer,
+    InventoryStockSerializer,
+    LedgerEntrySerializer,
+    LoanSerializer,
+    MemberSerializer,
+    MillingBatchSerializer,
+    PayoutSerializer,
+    SaleProceedSerializer,
+    SeasonSerializer,
+)
 from .services import generate_season_payouts
 
 
 def health_check(request):
     return JsonResponse({"status": "ok", "service": "coffee-cooperative-api"})
+
+
+class RoleScopedModelViewSet(viewsets.ModelViewSet):
+    permission_classes = [RoleBasedApiPermission]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if get_user_role(self.request.user) != MEMBER_ROLE:
+            return queryset
+
+        model_name = queryset.model._meta.model_name
+        if model_name == "member":
+            return queryset.filter(user=self.request.user)
+        if model_name in {"delivery", "loan", "payout", "ledgerentry"}:
+            return queryset.filter(member__user=self.request.user)
+        return queryset.none()
+
+
+class MemberViewSet(RoleScopedModelViewSet):
+    queryset = Member.objects.select_related("user").all()
+    serializer_class = MemberSerializer
+
+
+class CollectionPointViewSet(RoleScopedModelViewSet):
+    queryset = CollectionPoint.objects.all()
+    serializer_class = CollectionPointSerializer
+
+
+class SeasonViewSet(RoleScopedModelViewSet):
+    queryset = Season.objects.all()
+    serializer_class = SeasonSerializer
+
+
+class DeliveryViewSet(RoleScopedModelViewSet):
+    queryset = Delivery.objects.select_related("member", "season", "collection_point", "recorded_by").all()
+    serializer_class = DeliverySerializer
+
+
+class MillingBatchViewSet(RoleScopedModelViewSet):
+    queryset = MillingBatch.objects.select_related("season").all()
+    serializer_class = MillingBatchSerializer
+
+
+class InventoryStockViewSet(RoleScopedModelViewSet):
+    queryset = InventoryStock.objects.select_related("season").all()
+    serializer_class = InventoryStockSerializer
+
+
+class LoanViewSet(RoleScopedModelViewSet):
+    queryset = Loan.objects.select_related("member", "season", "reviewed_by").all()
+    serializer_class = LoanSerializer
+
+
+class SaleProceedViewSet(RoleScopedModelViewSet):
+    queryset = SaleProceed.objects.select_related("season").all()
+    serializer_class = SaleProceedSerializer
+
+
+class PayoutViewSet(RoleScopedModelViewSet):
+    queryset = Payout.objects.select_related("member", "season", "generated_by").all()
+    serializer_class = PayoutSerializer
+
+
+class LedgerEntryViewSet(RoleScopedModelViewSet):
+    queryset = LedgerEntry.objects.select_related("member", "season").all()
+    serializer_class = LedgerEntrySerializer
 
 
 @csrf_exempt
