@@ -281,3 +281,63 @@ class TokenAuthTests(TestCase):
         self.assertEqual(logout_response.status_code, 200)
         self.assertEqual(refresh_response.status_code, 401)
         self.assertEqual(AuthToken.objects.filter(revoked_at__isnull=False).count(), 1)
+
+
+class CrudApiTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.admin_user = get_user_model().objects.create_user(username="admin", password="password")
+        self.admin_user.profile.role = UserProfile.Role.ADMIN
+        self.admin_user.profile.save()
+
+        login_response = self.client.post(
+            "/api/auth/login/",
+            json.dumps({"username": "admin", "password": "password"}),
+            content_type="application/json",
+        )
+        self.access_token = login_response.json()["access"]
+
+    def api_headers(self):
+        return {"HTTP_AUTHORIZATION": f"Bearer {self.access_token}"}
+
+    def test_admin_can_crud_members(self):
+        create_response = self.client.post(
+            "/api/members/",
+            json.dumps(
+                {
+                    "membership_number": "KC100",
+                    "full_name": "Mary Njeri",
+                    "national_id": "98765432",
+                    "phone_number": "0712345678",
+                    "farm_size_acres": "3.25",
+                    "location": "Nyeri",
+                    "status": Member.Status.ACTIVE,
+                }
+            ),
+            content_type="application/json",
+            **self.api_headers(),
+        )
+
+        self.assertEqual(create_response.status_code, 201)
+        member_id = create_response.json()["id"]
+        self.assertTrue(Member.objects.filter(id=member_id).exists())
+
+        list_response = self.client.get("/api/members/", **self.api_headers())
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(len(list_response.json()), 1)
+
+        update_response = self.client.patch(
+            f"/api/members/{member_id}/",
+            json.dumps({"status": Member.Status.SUSPENDED}),
+            content_type="application/json",
+            **self.api_headers(),
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        self.assertEqual(update_response.json()["status"], Member.Status.SUSPENDED)
+
+        delete_response = self.client.delete(f"/api/members/{member_id}/", **self.api_headers())
+
+        self.assertEqual(delete_response.status_code, 204)
+        self.assertFalse(Member.objects.filter(id=member_id).exists())
