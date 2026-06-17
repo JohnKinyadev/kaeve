@@ -47,7 +47,7 @@ SECRET_KEY = os.environ.get(
 DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
 USE_DATABASE_URL = os.environ.get("USE_DATABASE_URL", str(not DEBUG)) == "True"
 
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,kaeve.onrender.com").split(",")
 
 
 # Application definition
