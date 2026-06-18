@@ -132,15 +132,8 @@ elif os.environ.get("POSTGRES_DB"):
             "PORT": os.environ.get("POSTGRES_PORT", "5433"),
         }
     }
-elif not DEBUG:
-    raise ImproperlyConfigured("DATABASE_URL is required when DJANGO_DEBUG=False.")
 else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
+    raise ImproperlyConfigured("PostgreSQL configuration is required. Set DATABASE_URL or POSTGRES_DB.")
 
 
 # Password validation
