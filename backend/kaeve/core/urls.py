@@ -26,4 +26,9 @@ urlpatterns = [
     path("active-collection-points/", views.collection_points, name="active-collection-points"),
     path("seasons/<int:season_id>/intake-report/", views.season_intake_report, name="season-intake-report"),
     path("seasons/<int:season_id>/generate-payouts/", views.generate_payouts, name="generate-payouts"),
+    path(
+        "members/<int:member_id>/seasons/<int:season_id>/payout-statement/",
+        views.payout_statement,
+        name="payout-statement",
+    ),
 ] + router.urls

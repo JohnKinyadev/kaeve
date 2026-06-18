@@ -3,7 +3,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction
 from django.db.models import Sum
 
-from .models import Delivery, LedgerEntry, Loan, Payout, SaleProceed
+from .models import Delivery, InventoryStock, LedgerEntry, Loan, Payout, SaleProceed
 
 
 MONEY_PLACES = Decimal("0.01")
@@ -22,6 +22,159 @@ def get_season_net_proceeds(season):
     gross = sales.aggregate(total=Sum("gross_amount"))["total"] or Decimal("0")
     expenses = sales.aggregate(total=Sum("expenses"))["total"] or Decimal("0")
     return gross - expenses
+
+
+def update_inventory_quantity(season, stock_type, warehouse, delta_kg):
+    delta_kg = Decimal(delta_kg or 0)
+    if delta_kg == 0:
+        return None
+
+    stock, _ = InventoryStock.objects.get_or_create(
+        season=season,
+        stock_type=stock_type,
+        warehouse=warehouse,
+        defaults={"quantity_kg": Decimal("0.00")},
+    )
+    next_quantity = stock.quantity_kg + delta_kg
+    if next_quantity < 0:
+        raise ValueError(
+            f"Inventory for {stock.get_stock_type_display()} in {warehouse} cannot go below zero."
+        )
+    stock.quantity_kg = next_quantity
+    stock.save(update_fields=["quantity_kg", "updated_at"])
+    return stock
+
+
+def sync_delivery_effects(delivery, previous=None):
+    if previous:
+        update_inventory_quantity(
+            previous["season"],
+            InventoryStock.StockType.CHERRY,
+            previous["warehouse"],
+            -previous["weight_kg"],
+        )
+
+    update_inventory_quantity(
+        delivery.season,
+        InventoryStock.StockType.CHERRY,
+        delivery.collection_point.name,
+        delivery.weight_kg,
+    )
+    LedgerEntry.objects.update_or_create(
+        member=delivery.member,
+        season=delivery.season,
+        entry_type=LedgerEntry.EntryType.DELIVERY,
+        reference=f"delivery:{delivery.id}",
+        defaults={
+            "description": f"Cherry delivery at {delivery.collection_point.name}",
+            "amount": Decimal("0.00"),
+            "weight_kg": delivery.weight_kg,
+        },
+    )
+
+
+def reverse_delivery_effects(delivery):
+    update_inventory_quantity(
+        delivery.season,
+        InventoryStock.StockType.CHERRY,
+        delivery.collection_point.name,
+        -delivery.weight_kg,
+    )
+    LedgerEntry.objects.filter(
+        member=delivery.member,
+        season=delivery.season,
+        entry_type=LedgerEntry.EntryType.DELIVERY,
+        reference=f"delivery:{delivery.id}",
+    ).delete()
+
+
+def sync_milling_batch_effects(batch, previous=None):
+    warehouse = "Milling"
+    if previous:
+        update_inventory_quantity(previous["season"], InventoryStock.StockType.CHERRY, warehouse, previous["cherry_in_kg"])
+        update_inventory_quantity(
+            previous["season"],
+            InventoryStock.StockType.PARCHMENT,
+            warehouse,
+            -previous["parchment_out_kg"],
+        )
+        update_inventory_quantity(
+            previous["season"],
+            InventoryStock.StockType.GREEN_BEAN,
+            warehouse,
+            -previous["green_bean_out_kg"],
+        )
+
+    update_inventory_quantity(batch.season, InventoryStock.StockType.CHERRY, warehouse, -batch.cherry_in_kg)
+    update_inventory_quantity(batch.season, InventoryStock.StockType.PARCHMENT, warehouse, batch.parchment_out_kg)
+    update_inventory_quantity(batch.season, InventoryStock.StockType.GREEN_BEAN, warehouse, batch.green_bean_out_kg)
+
+
+def reverse_milling_batch_effects(batch):
+    warehouse = "Milling"
+    update_inventory_quantity(batch.season, InventoryStock.StockType.CHERRY, warehouse, batch.cherry_in_kg)
+    update_inventory_quantity(batch.season, InventoryStock.StockType.PARCHMENT, warehouse, -batch.parchment_out_kg)
+    update_inventory_quantity(batch.season, InventoryStock.StockType.GREEN_BEAN, warehouse, -batch.green_bean_out_kg)
+
+
+def sync_loan_ledger_entry(loan):
+    LedgerEntry.objects.update_or_create(
+        member=loan.member,
+        season=loan.season,
+        entry_type=LedgerEntry.EntryType.LOAN,
+        reference=f"loan:{loan.id}",
+        defaults={
+            "description": f"Loan {loan.get_status_display().lower()}: {loan.reason or 'No reason provided'}",
+            "amount": loan.amount,
+            "weight_kg": None,
+        },
+    )
+
+
+@transaction.atomic
+def approve_loan(loan, reviewed_by):
+    loan.approve(reviewed_by)
+    sync_loan_ledger_entry(loan)
+    return loan
+
+
+@transaction.atomic
+def reject_loan(loan, reviewed_by):
+    loan.reject(reviewed_by)
+    sync_loan_ledger_entry(loan)
+    return loan
+
+
+def get_payout_statement(member, season):
+    deliveries = Delivery.objects.filter(member=member, season=season)
+    loans = Loan.objects.filter(member=member, season=season)
+    ledger_entries = LedgerEntry.objects.filter(member=member, season=season).order_by("-created_at")
+    payout = Payout.objects.filter(member=member, season=season).first()
+
+    return {
+        "member": {
+            "id": member.id,
+            "membership_number": member.membership_number,
+            "full_name": member.full_name,
+        },
+        "season": {
+            "id": season.id,
+            "name": season.name,
+            "season_type": season.season_type,
+        },
+        "totals": {
+            "delivered_kg": deliveries.aggregate(total=Sum("weight_kg"))["total"] or Decimal("0.00"),
+            "approved_loans": loans.filter(status__in=[Loan.Status.APPROVED, Loan.Status.DEDUCTED]).aggregate(
+                total=Sum("amount")
+            )["total"]
+            or Decimal("0.00"),
+            "net_payable": payout.net_payable if payout else Decimal("0.00"),
+        },
+        "payout": payout,
+        "deliveries": deliveries.order_by("-delivery_date", "-created_at"),
+        "loans": loans.order_by("-requested_on", "-created_at"),
+        "ledger_entries": ledger_entries,
+    }
 
 
 @transaction.atomic

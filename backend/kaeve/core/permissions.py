@@ -153,6 +153,8 @@ class RoleBasedApiPermission(BasePermission):
         "update": "change",
         "partial_update": "change",
         "destroy": "delete",
+        "approve": "change",
+        "reject": "change",
     }
 
     def has_permission(self, request, view):

@@ -2,12 +2,17 @@ import json
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth import authenticate
+from django.db import transaction
 from django.db.models import Count, Sum
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.utils import timezone
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
 from .auth_tokens import create_token, create_token_pair, get_active_token
 from .models import (
@@ -42,10 +47,21 @@ from .serializers import (
     MemberSerializer,
     MillingBatchSerializer,
     PayoutSerializer,
+    PayoutStatementSerializer,
     SaleProceedSerializer,
     SeasonSerializer,
 )
-from .services import generate_season_payouts
+from .services import (
+    approve_loan,
+    generate_season_payouts,
+    get_payout_statement,
+    reject_loan,
+    reverse_delivery_effects,
+    reverse_milling_batch_effects,
+    sync_delivery_effects,
+    sync_loan_ledger_entry,
+    sync_milling_batch_effects,
+)
 
 
 def health_check(request):
@@ -54,9 +70,22 @@ def health_check(request):
 
 class RoleScopedModelViewSet(viewsets.ModelViewSet):
     permission_classes = [RoleBasedApiPermission]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    ordering = ["-created_at"]
+    exact_filter_fields = ()
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        for field in self.exact_filter_fields:
+            value = self.request.query_params.get(field)
+            if value in (None, ""):
+                continue
+            if value.lower() == "true":
+                value = True
+            elif value.lower() == "false":
+                value = False
+            queryset = queryset.filter(**{field: value})
+
         if get_user_role(self.request.user) != MEMBER_ROLE:
             return queryset
 
@@ -71,51 +100,162 @@ class RoleScopedModelViewSet(viewsets.ModelViewSet):
 class MemberViewSet(RoleScopedModelViewSet):
     queryset = Member.objects.select_related("user").all()
     serializer_class = MemberSerializer
+    search_fields = ["membership_number", "full_name", "national_id", "phone_number", "location"]
+    ordering_fields = ["membership_number", "full_name", "location", "status", "created_at"]
+    exact_filter_fields = ["status", "location"]
 
 
 class CollectionPointViewSet(RoleScopedModelViewSet):
     queryset = CollectionPoint.objects.all()
     serializer_class = CollectionPointSerializer
+    search_fields = ["name", "location"]
+    ordering_fields = ["name", "location", "is_active", "created_at"]
+    exact_filter_fields = ["is_active", "location"]
 
 
 class SeasonViewSet(RoleScopedModelViewSet):
     queryset = Season.objects.all()
     serializer_class = SeasonSerializer
+    search_fields = ["name"]
+    ordering_fields = ["name", "season_type", "start_date", "end_date", "created_at"]
+    exact_filter_fields = ["season_type", "is_active", "is_closed"]
 
 
 class DeliveryViewSet(RoleScopedModelViewSet):
     queryset = Delivery.objects.select_related("member", "season", "collection_point", "recorded_by").all()
     serializer_class = DeliverySerializer
+    search_fields = ["member__membership_number", "member__full_name", "collection_point__name", "notes"]
+    ordering_fields = ["delivery_date", "weight_kg", "grade", "created_at"]
+    exact_filter_fields = ["member", "season", "collection_point", "grade"]
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        delivery = serializer.save(recorded_by=self.request.user)
+        try:
+            sync_delivery_effects(delivery)
+        except ValueError as error:
+            raise ValidationError({"detail": str(error)})
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        current = self.get_object()
+        previous = {
+            "season": current.season,
+            "warehouse": current.collection_point.name,
+            "weight_kg": current.weight_kg,
+        }
+        delivery = serializer.save()
+        try:
+            sync_delivery_effects(delivery, previous=previous)
+        except ValueError as error:
+            raise ValidationError({"detail": str(error)})
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        try:
+            reverse_delivery_effects(instance)
+        except ValueError as error:
+            raise ValidationError({"detail": str(error)})
+        instance.delete()
 
 
 class MillingBatchViewSet(RoleScopedModelViewSet):
     queryset = MillingBatch.objects.select_related("season").all()
     serializer_class = MillingBatchSerializer
+    search_fields = ["batch_number", "season__name", "notes"]
+    ordering_fields = ["batch_number", "milled_on", "cherry_in_kg", "green_bean_out_kg", "created_at"]
+    exact_filter_fields = ["season"]
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        batch = serializer.save()
+        try:
+            sync_milling_batch_effects(batch)
+        except ValueError as error:
+            raise ValidationError({"detail": str(error)})
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        current = self.get_object()
+        previous = {
+            "season": current.season,
+            "cherry_in_kg": current.cherry_in_kg,
+            "parchment_out_kg": current.parchment_out_kg,
+            "green_bean_out_kg": current.green_bean_out_kg,
+        }
+        batch = serializer.save()
+        try:
+            sync_milling_batch_effects(batch, previous=previous)
+        except ValueError as error:
+            raise ValidationError({"detail": str(error)})
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        try:
+            reverse_milling_batch_effects(instance)
+        except ValueError as error:
+            raise ValidationError({"detail": str(error)})
+        instance.delete()
 
 
 class InventoryStockViewSet(RoleScopedModelViewSet):
     queryset = InventoryStock.objects.select_related("season").all()
     serializer_class = InventoryStockSerializer
+    search_fields = ["season__name", "warehouse"]
+    ordering_fields = ["stock_type", "warehouse", "quantity_kg", "created_at"]
+    exact_filter_fields = ["season", "stock_type", "warehouse"]
 
 
 class LoanViewSet(RoleScopedModelViewSet):
     queryset = Loan.objects.select_related("member", "season", "reviewed_by").all()
     serializer_class = LoanSerializer
+    search_fields = ["member__membership_number", "member__full_name", "reason"]
+    ordering_fields = ["requested_on", "amount", "status", "created_at"]
+    exact_filter_fields = ["member", "season", "status"]
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        loan = serializer.save()
+        sync_loan_ledger_entry(loan)
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        loan = serializer.save()
+        sync_loan_ledger_entry(loan)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        loan = approve_loan(self.get_object(), request.user)
+        return Response(self.get_serializer(loan).data)
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        loan = reject_loan(self.get_object(), request.user)
+        return Response(self.get_serializer(loan).data)
 
 
 class SaleProceedViewSet(RoleScopedModelViewSet):
     queryset = SaleProceed.objects.select_related("season").all()
     serializer_class = SaleProceedSerializer
+    search_fields = ["buyer", "season__name"]
+    ordering_fields = ["sold_on", "quantity_kg", "gross_amount", "expenses", "created_at"]
+    exact_filter_fields = ["season"]
 
 
 class PayoutViewSet(RoleScopedModelViewSet):
     queryset = Payout.objects.select_related("member", "season", "generated_by").all()
     serializer_class = PayoutSerializer
+    search_fields = ["member__membership_number", "member__full_name", "season__name"]
+    ordering_fields = ["delivered_kg", "gross_share", "net_payable", "created_at"]
+    exact_filter_fields = ["member", "season"]
 
 
 class LedgerEntryViewSet(RoleScopedModelViewSet):
     queryset = LedgerEntry.objects.select_related("member", "season").all()
     serializer_class = LedgerEntrySerializer
+    search_fields = ["member__membership_number", "member__full_name", "description", "reference"]
+    ordering_fields = ["entry_type", "amount", "weight_kg", "created_at"]
+    exact_filter_fields = ["member", "season", "entry_type"]
 
 
 @csrf_exempt
@@ -129,11 +269,20 @@ def register(request):
     username = (payload.get("username") or "").strip()
     email = (payload.get("email") or "").strip()
     password = payload.get("password") or ""
+    role = payload.get("role") or UserProfile.Role.MEMBER
 
     if not username:
         return JsonResponse({"detail": "Username is required."}, status=400)
     if not password:
         return JsonResponse({"detail": "Password is required."}, status=400)
+    if role not in UserProfile.Role.values:
+        return JsonResponse(
+            {
+                "detail": "Invalid role.",
+                "allowed_roles": list(UserProfile.Role.values),
+            },
+            status=400,
+        )
 
     user_model = get_user_model()
     if user_model.objects.filter(username=username).exists():
@@ -145,10 +294,10 @@ def register(request):
         username=username,
         email=email,
         password=password,
-        is_staff=False,
-        is_superuser=False,
+        is_staff=role == UserProfile.Role.ADMIN,
+        is_superuser=role == UserProfile.Role.ADMIN,
     )
-    user.profile.role = UserProfile.Role.MEMBER
+    user.profile.role = role
     user.profile.save(update_fields=["role", "updated_at"])
 
     response = create_token_pair(user)
@@ -284,6 +433,18 @@ def collection_points(request):
             ]
         }
     )
+
+
+@role_required(ADMIN_ROLE, MANAGER_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
+def payout_statement(request, member_id, season_id):
+    member = get_object_or_404(Member, id=member_id)
+    if get_user_role(request.user) == MEMBER_ROLE and member.user_id != request.user.id:
+        return JsonResponse({"detail": "You do not have permission to view this statement."}, status=403)
+
+    season = get_object_or_404(Season, id=season_id)
+    statement = get_payout_statement(member, season)
+    serializer = PayoutStatementSerializer(statement)
+    return JsonResponse(serializer.data)
 
 
 @csrf_exempt

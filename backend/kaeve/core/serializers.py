@@ -163,6 +163,7 @@ class DeliverySerializer(CleanModelSerializer):
             "membership_number",
             "season_name",
             "collection_point_name",
+            "recorded_by",
             "recorded_by_username",
             "grade_display",
             "created_at",
@@ -344,3 +345,13 @@ class LedgerEntrySerializer(CleanModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class PayoutStatementSerializer(serializers.Serializer):
+    member = serializers.DictField(read_only=True)
+    season = serializers.DictField(read_only=True)
+    totals = serializers.DictField(read_only=True)
+    payout = PayoutSerializer(read_only=True)
+    deliveries = DeliverySerializer(many=True, read_only=True)
+    loans = LoanSerializer(many=True, read_only=True)
+    ledger_entries = LedgerEntrySerializer(many=True, read_only=True)
