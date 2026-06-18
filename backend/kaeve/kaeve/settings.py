@@ -14,6 +14,8 @@ import os
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -127,6 +129,8 @@ elif os.environ.get("POSTGRES_DB"):
             "PORT": os.environ.get("POSTGRES_PORT", "5433"),
         }
     }
+elif not DEBUG:
+    raise ImproperlyConfigured("DATABASE_URL is required when DJANGO_DEBUG=False.")
 else:
     DATABASES = {
         "default": {
