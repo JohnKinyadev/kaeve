@@ -7,7 +7,7 @@ from django.utils import timezone
 from .models import AuthToken
 
 
-ACCESS_TOKEN_LIFETIME = timedelta(minutes=15)
+ACCESS_TOKEN_LIFETIME = timedelta(minutes=30)
 REFRESH_TOKEN_LIFETIME = timedelta(days=7)
 
 
