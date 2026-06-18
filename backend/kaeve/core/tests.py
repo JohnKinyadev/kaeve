@@ -5,7 +5,19 @@ from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.utils import timezone
 
-from .models import AuthToken, CollectionPoint, Delivery, Loan, Member, SaleProceed, Season, UserProfile
+from .models import (
+    AuthToken,
+    CollectionPoint,
+    Delivery,
+    InventoryStock,
+    LedgerEntry,
+    Loan,
+    Member,
+    Payout,
+    SaleProceed,
+    Season,
+    UserProfile,
+)
 from .services import generate_season_payouts
 
 
@@ -300,6 +312,24 @@ class CrudApiTests(TestCase):
     def api_headers(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.access_token}"}
 
+    def create_member(self, suffix="100"):
+        return Member.objects.create(
+            membership_number=f"KC{suffix}",
+            full_name=f"Member {suffix}",
+            national_id=f"ID{suffix}",
+            phone_number="0712345678",
+            farm_size_acres=Decimal("3.25"),
+            location="Nyeri",
+            status=Member.Status.ACTIVE,
+        )
+
+    def create_season(self):
+        return Season.objects.create(
+            name="Main Crop 2026",
+            season_type=Season.SeasonType.MAIN_CROP,
+            start_date=timezone.localdate(),
+        )
+
     def test_admin_can_crud_members(self):
         create_response = self.client.post(
             "/api/members/",
@@ -325,7 +355,7 @@ class CrudApiTests(TestCase):
         list_response = self.client.get("/api/members/", **self.api_headers())
 
         self.assertEqual(list_response.status_code, 200)
-        self.assertEqual(len(list_response.json()), 1)
+        self.assertEqual(list_response.json()["count"], 1)
 
         update_response = self.client.patch(
             f"/api/members/{member_id}/",
@@ -341,3 +371,137 @@ class CrudApiTests(TestCase):
 
         self.assertEqual(delete_response.status_code, 204)
         self.assertFalse(Member.objects.filter(id=member_id).exists())
+
+    def test_delivery_create_updates_inventory_and_ledger(self):
+        member = self.create_member()
+        season = self.create_season()
+        point = CollectionPoint.objects.create(name="Kiamumbi", location="Kiambu")
+
+        response = self.client.post(
+            "/api/deliveries/",
+            json.dumps(
+                {
+                    "member": member.id,
+                    "season": season.id,
+                    "collection_point": point.id,
+                    "weight_kg": "75.00",
+                    "grade": Delivery.Grade.GRADE_A,
+                }
+            ),
+            content_type="application/json",
+            **self.api_headers(),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        stock = InventoryStock.objects.get(
+            season=season,
+            stock_type=InventoryStock.StockType.CHERRY,
+            warehouse=point.name,
+        )
+        self.assertEqual(stock.quantity_kg, Decimal("75.00"))
+        self.assertTrue(
+            LedgerEntry.objects.filter(
+                member=member,
+                season=season,
+                entry_type=LedgerEntry.EntryType.DELIVERY,
+                reference=f"delivery:{response.json()['id']}",
+            ).exists()
+        )
+
+    def test_milling_batch_moves_inventory(self):
+        season = self.create_season()
+        InventoryStock.objects.create(
+            season=season,
+            stock_type=InventoryStock.StockType.CHERRY,
+            warehouse="Milling",
+            quantity_kg=Decimal("100.00"),
+        )
+
+        response = self.client.post(
+            "/api/milling-batches/",
+            json.dumps(
+                {
+                    "season": season.id,
+                    "batch_number": "MB-001",
+                    "cherry_in_kg": "100.00",
+                    "parchment_out_kg": "22.00",
+                    "green_bean_out_kg": "18.00",
+                }
+            ),
+            content_type="application/json",
+            **self.api_headers(),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        cherry = InventoryStock.objects.get(
+            season=season,
+            stock_type=InventoryStock.StockType.CHERRY,
+            warehouse="Milling",
+        )
+        green = InventoryStock.objects.get(
+            season=season,
+            stock_type=InventoryStock.StockType.GREEN_BEAN,
+            warehouse="Milling",
+        )
+        self.assertEqual(cherry.quantity_kg, Decimal("0.00"))
+        self.assertEqual(green.quantity_kg, Decimal("18.00"))
+
+    def test_loan_approve_action_updates_status_and_ledger(self):
+        member = self.create_member()
+        season = self.create_season()
+        loan = Loan.objects.create(
+            member=member,
+            season=season,
+            amount=Decimal("500.00"),
+            reason="Fertilizer",
+        )
+
+        response = self.client.post(f"/api/loans/{loan.id}/approve/", **self.api_headers())
+
+        loan.refresh_from_db()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(loan.status, Loan.Status.APPROVED)
+        self.assertEqual(loan.reviewed_by, self.admin_user)
+        self.assertTrue(
+            LedgerEntry.objects.filter(
+                member=member,
+                season=season,
+                entry_type=LedgerEntry.EntryType.LOAN,
+                reference=f"loan:{loan.id}",
+            ).exists()
+        )
+
+    def test_payout_statement_returns_member_season_summary(self):
+        member = self.create_member()
+        season = self.create_season()
+        Payout.objects.create(
+            member=member,
+            season=season,
+            delivered_kg=Decimal("75.00"),
+            gross_share=Decimal("6000.00"),
+            loan_deductions=Decimal("500.00"),
+            net_payable=Decimal("5500.00"),
+            generated_by=self.admin_user,
+        )
+
+        response = self.client.get(
+            f"/api/members/{member.id}/seasons/{season.id}/payout-statement/",
+            **self.api_headers(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["member"]["membership_number"], member.membership_number)
+        self.assertEqual(response.json()["totals"]["net_payable"], "5500.00")
+
+    def test_members_list_supports_search_filter_and_pagination(self):
+        self.create_member("101")
+        self.create_member("102")
+
+        response = self.client.get(
+            "/api/members/?search=Member 101&status=active&page=1",
+            **self.api_headers(),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual(response.json()["results"][0]["membership_number"], "KC101")
