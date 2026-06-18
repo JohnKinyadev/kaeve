@@ -68,6 +68,48 @@ def health_check(request):
     return JsonResponse({"status": "ok", "service": "coffee-cooperative-api"})
 
 
+def create_user_account(payload, default_role=UserProfile.Role.MEMBER, allow_privileged_roles=False):
+    username = (payload.get("username") or "").strip()
+    email = (payload.get("email") or "").strip()
+    password = payload.get("password") or ""
+    role = payload.get("role") or default_role
+
+    if not username:
+        return None, JsonResponse({"detail": "Username is required."}, status=400)
+    if not password:
+        return None, JsonResponse({"detail": "Password is required."}, status=400)
+    if role not in UserProfile.Role.values:
+        return None, JsonResponse(
+            {
+                "detail": "Invalid role.",
+                "allowed_roles": list(UserProfile.Role.values),
+            },
+            status=400,
+        )
+    if not allow_privileged_roles and role != UserProfile.Role.MEMBER:
+        return None, JsonResponse(
+            {"detail": "Public registration only allows member accounts."},
+            status=403,
+        )
+
+    user_model = get_user_model()
+    if user_model.objects.filter(username=username).exists():
+        return None, JsonResponse({"detail": "Username is already taken."}, status=400)
+    if email and user_model.objects.filter(email=email).exists():
+        return None, JsonResponse({"detail": "Email is already taken."}, status=400)
+
+    user = user_model.objects.create_user(
+        username=username,
+        email=email,
+        password=password,
+        is_staff=role == UserProfile.Role.ADMIN,
+        is_superuser=role == UserProfile.Role.ADMIN,
+    )
+    user.profile.role = role
+    user.profile.save(update_fields=["role", "updated_at"])
+    return user, None
+
+
 class RoleScopedModelViewSet(viewsets.ModelViewSet):
     permission_classes = [RoleBasedApiPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -266,39 +308,9 @@ def register(request):
     except json.JSONDecodeError:
         return JsonResponse({"detail": "Invalid JSON body."}, status=400)
 
-    username = (payload.get("username") or "").strip()
-    email = (payload.get("email") or "").strip()
-    password = payload.get("password") or ""
-    role = payload.get("role") or UserProfile.Role.MEMBER
-
-    if not username:
-        return JsonResponse({"detail": "Username is required."}, status=400)
-    if not password:
-        return JsonResponse({"detail": "Password is required."}, status=400)
-    if role not in UserProfile.Role.values:
-        return JsonResponse(
-            {
-                "detail": "Invalid role.",
-                "allowed_roles": list(UserProfile.Role.values),
-            },
-            status=400,
-        )
-
-    user_model = get_user_model()
-    if user_model.objects.filter(username=username).exists():
-        return JsonResponse({"detail": "Username is already taken."}, status=400)
-    if email and user_model.objects.filter(email=email).exists():
-        return JsonResponse({"detail": "Email is already taken."}, status=400)
-
-    user = user_model.objects.create_user(
-        username=username,
-        email=email,
-        password=password,
-        is_staff=role == UserProfile.Role.ADMIN,
-        is_superuser=role == UserProfile.Role.ADMIN,
-    )
-    user.profile.role = role
-    user.profile.save(update_fields=["role", "updated_at"])
+    user, error_response = create_user_account(payload)
+    if error_response:
+        return error_response
 
     response = create_token_pair(user)
     response["user"] = {
@@ -307,6 +319,30 @@ def register(request):
         "role": get_user_role(user),
     }
     return JsonResponse(response, status=201)
+
+
+@csrf_exempt
+@require_POST
+@role_required(ADMIN_ROLE)
+def admin_register(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON body."}, status=400)
+
+    user, error_response = create_user_account(payload, allow_privileged_roles=True)
+    if error_response:
+        return error_response
+
+    return JsonResponse(
+        {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role": get_user_role(user),
+        },
+        status=201,
+    )
 
 
 @csrf_exempt

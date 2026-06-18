@@ -17,6 +17,7 @@ router.register("ledger-entries", views.LedgerEntryViewSet)
 
 urlpatterns = [
     path("auth/register/", views.register, name="register"),
+    path("auth/admin-register/", views.admin_register, name="admin-register"),
     path("auth/login/", views.login, name="login"),
     path("auth/refresh/", views.refresh_access_token, name="refresh-access-token"),
     path("auth/logout/", views.logout, name="logout"),

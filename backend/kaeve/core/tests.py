@@ -153,13 +153,35 @@ class TokenAuthTests(TestCase):
         self.user.profile.role = UserProfile.Role.ADMIN
         self.user.profile.save()
 
-    def test_register_creates_user_with_role_and_tokens(self):
+    def test_register_creates_member_user_and_tokens(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            json.dumps(
+                {
+                    "username": "new-member",
+                    "email": "new-member@example.com",
+                    "password": "Password123!",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        user = get_user_model().objects.get(username="new-member")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertIn("access", response.json())
+        self.assertIn("refresh", response.json())
+        self.assertEqual(user.profile.role, UserProfile.Role.MEMBER)
+        self.assertEqual(response.json()["user"]["role"], UserProfile.Role.MEMBER)
+        self.assertFalse(user.is_staff)
+        self.assertFalse(user.is_superuser)
+
+    def test_register_rejects_privileged_role(self):
         response = self.client.post(
             "/api/auth/register/",
             json.dumps(
                 {
                     "username": "new-manager",
-                    "email": "new-manager@example.com",
                     "password": "Password123!",
                     "role": UserProfile.Role.MANAGER,
                 }
@@ -167,13 +189,9 @@ class TokenAuthTests(TestCase):
             content_type="application/json",
         )
 
-        user = get_user_model().objects.get(username="new-manager")
-
-        self.assertEqual(response.status_code, 201)
-        self.assertIn("access", response.json())
-        self.assertIn("refresh", response.json())
-        self.assertEqual(user.profile.role, UserProfile.Role.MANAGER)
-        self.assertEqual(response.json()["user"]["role"], UserProfile.Role.MANAGER)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Public registration only allows member accounts.")
+        self.assertFalse(get_user_model().objects.filter(username="new-manager").exists())
 
     def test_register_rejects_invalid_role(self):
         response = self.client.post(
@@ -206,6 +224,35 @@ class TokenAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["detail"], "Username is already taken.")
+
+    def test_admin_register_creates_privileged_user(self):
+        login_response = self.client.post(
+            "/api/auth/login/",
+            json.dumps({"username": "manager", "password": "password"}),
+            content_type="application/json",
+        )
+        access_token = login_response.json()["access"]
+
+        response = self.client.post(
+            "/api/auth/admin-register/",
+            json.dumps(
+                {
+                    "username": "new-admin",
+                    "email": "new-admin@example.com",
+                    "password": "Password123!",
+                    "role": UserProfile.Role.ADMIN,
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {access_token}",
+        )
+
+        user = get_user_model().objects.get(username="new-admin")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["role"], UserProfile.Role.ADMIN)
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.is_superuser)
 
     def test_login_returns_access_and_refresh_tokens(self):
         response = self.client.post(
