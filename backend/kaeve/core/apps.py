@@ -7,3 +7,6 @@ class CoreConfig(AppConfig):
 
     def ready(self):
         import core.signals  # noqa: F401
+        from core.bootstrap import bootstrap_admin_from_env
+
+        bootstrap_admin_from_env()
