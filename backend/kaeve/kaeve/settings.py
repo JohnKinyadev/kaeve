@@ -13,7 +13,6 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
-import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -113,32 +112,28 @@ def database_config_from_url(database_url):
     return config
 
 
-# if os.environ.get("DATABASE_URL") and USE_DATABASE_URL:
-#     DATABASES = {
-#         "default": database_config_from_url(os.environ["DATABASE_URL"]),
-#     }
-# elif os.environ.get("POSTGRES_DB"):
-#     # DATABASES = {
-    #     "default": {
-    #         "ENGINE": "django.db.backends.postgresql",
-    #         "NAME": os.environ["POSTGRES_DB"],
-    #         "USER": os.environ.get("POSTGRES_USER", "postgres"),
-    #         "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
-    #         "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
-    #         "PORT": os.environ.get("POSTGRES_PORT", "5433"),
-    #     }
-    # }
-
-DATABASES = {
-        'default' : dj_database_url.parse("postgresql://kaeve_db_user:KIo5FoXvu4cnjEjDH0bmkUFGKGrZqYpO@dpg-d8o1es8g4nts73c5ta80-a.oregon-postgres.render.com/kaeve_db")
+if os.environ.get("DATABASE_URL") and USE_DATABASE_URL:
+    DATABASES = {
+        "default": database_config_from_url(os.environ["DATABASE_URL"]),
     }
-# else:
-#     DATABASES = {
-#         "default": {
-#             "ENGINE": "django.db.backends.sqlite3",
-#             "NAME": BASE_DIR / "db.sqlite3",
-#         }
-#     }
+elif os.environ.get("POSTGRES_DB"):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ["POSTGRES_DB"],
+            "USER": os.environ.get("POSTGRES_USER", "postgres"),
+            "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
+            "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
+            "PORT": os.environ.get("POSTGRES_PORT", "5433"),
+        }
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 
 # Password validation
@@ -188,4 +183,6 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
 }
