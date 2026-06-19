@@ -264,7 +264,7 @@ class DeliverySerializer(CleanModelSerializer):
 
 class MillingBatchSerializer(CleanModelSerializer):
     season_name = serializers.CharField(source="season.name", read_only=True)
-    outturn_ratio = serializers.DecimalField(max_digits=5, decimal_places=2, read_only=True)
+    outturn_ratio = serializers.DecimalField(max_digits=7, decimal_places=2, read_only=True)
 
     class Meta:
         model = MillingBatch

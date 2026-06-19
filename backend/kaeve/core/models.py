@@ -178,6 +178,20 @@ class MillingBatch(TimeStampedModel):
     milled_on = models.DateField(default=timezone.localdate)
     notes = models.TextField(blank=True)
 
+    def clean(self):
+        if self.cherry_in_kg is not None and self.cherry_in_kg <= 0:
+            raise ValidationError("Cherry input must be greater than zero.")
+        if self.parchment_out_kg is not None and self.parchment_out_kg < 0:
+            raise ValidationError("Parchment output cannot be negative.")
+        if self.green_bean_out_kg is not None and self.green_bean_out_kg < 0:
+            raise ValidationError("Green bean output cannot be negative.")
+        if (
+            self.cherry_in_kg is not None
+            and self.green_bean_out_kg is not None
+            and self.green_bean_out_kg > self.cherry_in_kg
+        ):
+            raise ValidationError("Green bean output cannot be greater than cherry input.")
+
     @property
     def outturn_ratio(self):
         if not self.cherry_in_kg:
