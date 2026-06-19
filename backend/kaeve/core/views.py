@@ -291,6 +291,9 @@ class PayoutViewSet(RoleScopedModelViewSet):
     ordering_fields = ["delivered_kg", "gross_share", "net_payable", "created_at"]
     exact_filter_fields = ["member", "season"]
 
+    def perform_create(self, serializer):
+        serializer.save(generated_by=self.request.user)
+
 
 class LedgerEntryViewSet(RoleScopedModelViewSet):
     queryset = LedgerEntry.objects.select_related("member", "season").all()
@@ -487,8 +490,11 @@ def payout_statement(request, member_id, season_id):
 @require_POST
 @role_required(ADMIN_ROLE)
 def generate_payouts(request, season_id):
-    season = Season.objects.get(id=season_id)
-    payouts = generate_season_payouts(season, request.user)
+    season = get_object_or_404(Season, id=season_id)
+    try:
+        payouts = generate_season_payouts(season, request.user)
+    except ValueError as error:
+        return JsonResponse({"detail": str(error)}, status=400)
     return JsonResponse(
         {
             "season_id": season.id,

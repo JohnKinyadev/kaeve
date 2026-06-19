@@ -1,4 +1,8 @@
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
+from django.db import transaction
+from django.db.models import Sum
 from rest_framework import serializers
 
 from .models import (
@@ -79,7 +83,9 @@ class AuthTokenSerializer(serializers.ModelSerializer):
 
 
 class MemberSerializer(CleanModelSerializer):
-    username = serializers.CharField(source="user.username", read_only=True)
+    username = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True, style={"input_type": "password"})
 
     class Meta:
         model = Member
@@ -94,10 +100,95 @@ class MemberSerializer(CleanModelSerializer):
             "farm_size_acres",
             "location",
             "status",
+            "email",
+            "password",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "username", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["username"] = instance.user.username if instance.user_id else ""
+        return data
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        username = (attrs.get("username") or "").strip()
+        email = (attrs.get("email") or "").strip()
+        password = attrs.get("password") or ""
+        user = attrs.get("user")
+        user_model = get_user_model()
+        current_user_id = getattr(getattr(self.instance, "user", None), "id", None)
+        has_account = bool(user or current_user_id)
+        wants_account_change = bool(username or email or password)
+
+        if wants_account_change and not has_account and (not username or not password):
+            raise serializers.ValidationError(
+                {"username": "Username and password are required to create a member login."}
+            )
+        if username and not password and not has_account:
+            raise serializers.ValidationError({"password": "Password is required when creating a member login."})
+        if password and not username and not has_account:
+            raise serializers.ValidationError({"username": "Username is required when creating a member login."})
+        if username and user_model.objects.filter(username=username).exclude(id=current_user_id).exists():
+            raise serializers.ValidationError({"username": "Username is already taken."})
+        if email and user_model.objects.filter(email=email).exclude(id=current_user_id).exists():
+            raise serializers.ValidationError({"email": "Email is already taken."})
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        username = (validated_data.pop("username", "") or "").strip()
+        email = (validated_data.pop("email", "") or "").strip()
+        password = validated_data.pop("password", "") or ""
+        user = validated_data.get("user")
+
+        if username and password and user is None:
+            user = get_user_model().objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+            )
+            user.profile.role = UserProfile.Role.MEMBER
+            user.profile.phone_number = validated_data.get("phone_number", "")
+            user.profile.save(update_fields=["role", "phone_number", "updated_at"])
+            validated_data["user"] = user
+
+        return super().create(validated_data)
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        username = (validated_data.pop("username", "") or "").strip()
+        email = (validated_data.pop("email", "") or "").strip()
+        password = validated_data.pop("password", "") or ""
+
+        member = super().update(instance, validated_data)
+        if not any([username, email, password]):
+            return member
+
+        user = member.user
+        if user is None:
+            if not username or not password:
+                raise serializers.ValidationError(
+                    {"username": "Username and password are required to create a login for this member."}
+                )
+            user = get_user_model().objects.create_user(username=username, email=email, password=password)
+            member.user = user
+            member.save(update_fields=["user", "updated_at"])
+        else:
+            if username:
+                user.username = username
+            if email:
+                user.email = email
+            if password:
+                user.set_password(password)
+            user.save()
+
+        user.profile.role = UserProfile.Role.MEMBER
+        user.profile.phone_number = member.phone_number
+        user.profile.save(update_fields=["role", "phone_number", "updated_at"])
+        return member
 
 
 class CollectionPointSerializer(CleanModelSerializer):
@@ -306,10 +397,41 @@ class PayoutSerializer(CleanModelSerializer):
             "member_name",
             "membership_number",
             "season_name",
+            "loan_deductions",
+            "net_payable",
+            "generated_by",
             "generated_by_username",
             "created_at",
             "updated_at",
         ]
+
+    def _approved_loan_total(self, member, season):
+        return (
+            Loan.objects.filter(
+                member=member,
+                season=season,
+                status__in=[Loan.Status.APPROVED, Loan.Status.DEDUCTED],
+            ).aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        member = attrs.get("member") or getattr(self.instance, "member", None)
+        season = attrs.get("season") or getattr(self.instance, "season", None)
+        gross_share = attrs.get("gross_share", getattr(self.instance, "gross_share", Decimal("0.00")))
+        other_deductions = attrs.get(
+            "other_deductions",
+            getattr(self.instance, "other_deductions", Decimal("0.00")),
+        )
+
+        if member and season:
+            loan_deductions = self._approved_loan_total(member, season)
+            attrs["loan_deductions"] = loan_deductions
+            attrs["net_payable"] = Decimal(gross_share or 0) - Decimal(loan_deductions or 0) - Decimal(
+                other_deductions or 0
+            )
+        return attrs
 
 
 class LedgerEntrySerializer(CleanModelSerializer):

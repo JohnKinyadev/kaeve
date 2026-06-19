@@ -1,3 +1,5 @@
+from decimal import Decimal, ROUND_HALF_UP
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -105,10 +107,6 @@ class Season(TimeStampedModel):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(
-                fields=["name", "season_type"],
-                name="unique_season_name_and_type",
-            ),
             models.CheckConstraint(
                 condition=models.Q(end_date__isnull=True) | models.Q(end_date__gte=models.F("start_date")),
                 name="season_end_date_after_start_date",
@@ -183,8 +181,11 @@ class MillingBatch(TimeStampedModel):
     @property
     def outturn_ratio(self):
         if not self.cherry_in_kg:
-            return 0
-        return round((self.green_bean_out_kg / self.cherry_in_kg) * 100, 2)
+            return Decimal("0.00")
+        return ((self.green_bean_out_kg / self.cherry_in_kg) * 100).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        )
 
     def __str__(self):
         return self.batch_number
@@ -203,10 +204,6 @@ class InventoryStock(TimeStampedModel):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(
-                fields=["season", "stock_type", "warehouse"],
-                name="unique_stock_per_season_type_warehouse",
-            ),
             models.CheckConstraint(condition=models.Q(quantity_kg__gte=0), name="inventory_quantity_not_negative"),
         ]
 
@@ -292,7 +289,6 @@ class Payout(TimeStampedModel):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["member", "season"], name="unique_member_season_payout"),
             models.CheckConstraint(condition=models.Q(delivered_kg__gte=0), name="payout_delivered_kg_not_negative"),
             models.CheckConstraint(condition=models.Q(gross_share__gte=0), name="payout_gross_share_not_negative"),
             models.CheckConstraint(condition=models.Q(loan_deductions__gte=0), name="payout_loan_deductions_not_negative"),
@@ -320,12 +316,6 @@ class LedgerEntry(TimeStampedModel):
 
     class Meta:
         ordering = ["-created_at"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["member", "season", "entry_type", "reference"],
-                name="unique_ledger_reference_per_member_season",
-            )
-        ]
 
     def __str__(self):
         return f"{self.member} - {self.entry_type}"

@@ -29,12 +29,18 @@ def update_inventory_quantity(season, stock_type, warehouse, delta_kg):
     if delta_kg == 0:
         return None
 
-    stock, _ = InventoryStock.objects.get_or_create(
+    stock = InventoryStock.objects.filter(
         season=season,
         stock_type=stock_type,
         warehouse=warehouse,
-        defaults={"quantity_kg": Decimal("0.00")},
-    )
+    ).order_by("id").first()
+    if stock is None:
+        stock = InventoryStock.objects.create(
+            season=season,
+            stock_type=stock_type,
+            warehouse=warehouse,
+            quantity_kg=Decimal("0.00"),
+        )
     next_quantity = stock.quantity_kg + delta_kg
     if next_quantity < 0:
         raise ValueError(
@@ -60,17 +66,29 @@ def sync_delivery_effects(delivery, previous=None):
         delivery.collection_point.name,
         delivery.weight_kg,
     )
-    LedgerEntry.objects.update_or_create(
+    ledger_defaults = {
+        "description": f"Cherry delivery at {delivery.collection_point.name}",
+        "amount": Decimal("0.00"),
+        "weight_kg": delivery.weight_kg,
+    }
+    ledger = LedgerEntry.objects.filter(
         member=delivery.member,
         season=delivery.season,
         entry_type=LedgerEntry.EntryType.DELIVERY,
         reference=f"delivery:{delivery.id}",
-        defaults={
-            "description": f"Cherry delivery at {delivery.collection_point.name}",
-            "amount": Decimal("0.00"),
-            "weight_kg": delivery.weight_kg,
-        },
-    )
+    ).order_by("id").first()
+    if ledger:
+        for field, value in ledger_defaults.items():
+            setattr(ledger, field, value)
+        ledger.save(update_fields=[*ledger_defaults.keys(), "updated_at"])
+    else:
+        LedgerEntry.objects.create(
+            member=delivery.member,
+            season=delivery.season,
+            entry_type=LedgerEntry.EntryType.DELIVERY,
+            reference=f"delivery:{delivery.id}",
+            **ledger_defaults,
+        )
 
 
 def reverse_delivery_effects(delivery):
@@ -118,17 +136,29 @@ def reverse_milling_batch_effects(batch):
 
 
 def sync_loan_ledger_entry(loan):
-    LedgerEntry.objects.update_or_create(
+    ledger_defaults = {
+        "description": f"Loan {loan.get_status_display().lower()}: {loan.reason or 'No reason provided'}",
+        "amount": loan.amount,
+        "weight_kg": None,
+    }
+    ledger = LedgerEntry.objects.filter(
         member=loan.member,
         season=loan.season,
         entry_type=LedgerEntry.EntryType.LOAN,
         reference=f"loan:{loan.id}",
-        defaults={
-            "description": f"Loan {loan.get_status_display().lower()}: {loan.reason or 'No reason provided'}",
-            "amount": loan.amount,
-            "weight_kg": None,
-        },
-    )
+    ).order_by("id").first()
+    if ledger:
+        for field, value in ledger_defaults.items():
+            setattr(ledger, field, value)
+        ledger.save(update_fields=[*ledger_defaults.keys(), "updated_at"])
+    else:
+        LedgerEntry.objects.create(
+            member=loan.member,
+            season=loan.season,
+            entry_type=LedgerEntry.EntryType.LOAN,
+            reference=f"loan:{loan.id}",
+            **ledger_defaults,
+        )
 
 
 @transaction.atomic
@@ -209,30 +239,48 @@ def generate_season_payouts(season, generated_by):
         )
         net_payable = money(gross_share - loan_deductions)
 
-        payout, _ = Payout.objects.update_or_create(
+        payout_defaults = {
+            "delivered_kg": delivered_kg,
+            "gross_share": gross_share,
+            "loan_deductions": money(loan_deductions),
+            "other_deductions": Decimal("0.00"),
+            "net_payable": net_payable,
+            "generated_by": generated_by,
+        }
+        payout = Payout.objects.filter(
             member_id=member_id,
             season=season,
-            defaults={
-                "delivered_kg": delivered_kg,
-                "gross_share": gross_share,
-                "loan_deductions": money(loan_deductions),
-                "other_deductions": Decimal("0.00"),
-                "net_payable": net_payable,
-                "generated_by": generated_by,
-            },
-        )
+        ).order_by("id").first()
+        if payout:
+            for field, value in payout_defaults.items():
+                setattr(payout, field, value)
+            payout.save(update_fields=[*payout_defaults.keys(), "updated_at"])
+        else:
+            payout = Payout.objects.create(member_id=member_id, season=season, **payout_defaults)
 
-        LedgerEntry.objects.update_or_create(
+        ledger_defaults = {
+            "description": f"Payout generated for {season}",
+            "amount": net_payable,
+            "weight_kg": delivered_kg,
+        }
+        ledger = LedgerEntry.objects.filter(
             member_id=member_id,
             season=season,
             entry_type=LedgerEntry.EntryType.PAYOUT,
             reference=f"payout:{payout.id}",
-            defaults={
-                "description": f"Payout generated for {season}",
-                "amount": net_payable,
-                "weight_kg": delivered_kg,
-            },
-        )
+        ).order_by("id").first()
+        if ledger:
+            for field, value in ledger_defaults.items():
+                setattr(ledger, field, value)
+            ledger.save(update_fields=[*ledger_defaults.keys(), "updated_at"])
+        else:
+            LedgerEntry.objects.create(
+                member_id=member_id,
+                season=season,
+                entry_type=LedgerEntry.EntryType.PAYOUT,
+                reference=f"payout:{payout.id}",
+                **ledger_defaults,
+            )
 
         Loan.objects.filter(
             member_id=member_id,
