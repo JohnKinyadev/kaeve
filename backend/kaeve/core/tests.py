@@ -176,6 +176,31 @@ class TokenAuthTests(TestCase):
         self.assertFalse(user.is_staff)
         self.assertFalse(user.is_superuser)
 
+    def test_register_can_create_linked_member_profile(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            json.dumps(
+                {
+                    "username": "linked-member",
+                    "email": "linked-member@example.com",
+                    "password": "Password123!",
+                    "full_name": "Linked Member",
+                    "national_id": "LINKED001",
+                    "phone_number": "0711222333",
+                    "farm_size_acres": "2.50",
+                    "location": "Kiamumbi",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        user = get_user_model().objects.get(username="linked-member")
+        member = Member.objects.get(user=user)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(member.full_name, "Linked Member")
+        self.assertEqual(member.membership_number, f"MEM{user.id:05d}")
+
     def test_register_rejects_privileged_role(self):
         response = self.client.post(
             "/api/auth/register/",
@@ -265,6 +290,19 @@ class TokenAuthTests(TestCase):
         self.assertIn("access", response.json())
         self.assertIn("refresh", response.json())
 
+    def test_login_accepts_email_as_identifier(self):
+        self.user.email = "manager@example.com"
+        self.user.save(update_fields=["email"])
+
+        response = self.client.post(
+            "/api/auth/login/",
+            json.dumps({"username": "manager@example.com", "password": "password"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("access", response.json())
+
     def test_access_token_can_call_role_protected_api(self):
         login_response = self.client.post(
             "/api/auth/login/",
@@ -280,6 +318,37 @@ class TokenAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["role"], UserProfile.Role.ADMIN)
+
+    def test_me_returns_member_profile_for_member_user(self):
+        member_user = get_user_model().objects.create_user(
+            username="profile-member",
+            password="password",
+        )
+        member_user.profile.role = UserProfile.Role.MEMBER
+        member_user.profile.save()
+        Member.objects.create(
+            user=member_user,
+            membership_number="PROFILE001",
+            full_name="Profile Member",
+            national_id="PROFILE001",
+            phone_number="0700111222",
+            farm_size_acres="1.25",
+            location="Karura",
+        )
+        login_response = self.client.post(
+            "/api/auth/login/",
+            json.dumps({"username": "profile-member", "password": "password"}),
+            content_type="application/json",
+        )
+        access_token = login_response.json()["access"]
+
+        response = self.client.get(
+            "/api/auth/me/",
+            HTTP_AUTHORIZATION=f"Bearer {access_token}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["member"]["full_name"], "Profile Member")
 
     def test_staff_access_token_is_treated_as_admin_role(self):
         staff_user = get_user_model().objects.create_user(
