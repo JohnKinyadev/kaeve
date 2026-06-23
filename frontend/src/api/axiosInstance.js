@@ -1,5 +1,5 @@
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL || "";
-const API_BASE_URL = configuredBaseUrl.replace(/\/api\/?$/, "").replace(/\/$/, "");
+export const API_BASE_URL = configuredBaseUrl.replace(/\/api\/?$/, "").replace(/\/$/, "");
 const ACCESS_TOKEN_KEY = "kaeve_access_token";
 const REFRESH_TOKEN_KEY = "kaeve_refresh_token";
 const USER_KEY = "kaeve_user";
@@ -109,6 +109,10 @@ export const tokenStorage = {
   setStoredUser,
   clearTokens,
 };
+
+export function authProviderUrl(provider, next = "/dashboard") {
+  return `${API_BASE_URL}/api/auth/social/${provider}/start/?${new URLSearchParams({ next }).toString()}`;
+}
 
 export const apiClient = {
   get: (path) => request(path),

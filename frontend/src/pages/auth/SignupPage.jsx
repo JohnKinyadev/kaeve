@@ -3,6 +3,7 @@ import { Coffee } from "lucide-react";
 
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
+import { SocialAuthButtons } from "../../components/shared/SocialAuthButtons";
 import { useAuth } from "../../hooks/useAuth";
 
 export function SignupPage() {
@@ -37,6 +38,13 @@ export function SignupPage() {
 
   return (
     <main className="auth-screen">
+      <section className="auth-copy">
+        <div className="auth-copy-inner">
+          <span className="eyebrow">Member onboarding</span>
+          <h1>Join the cooperative portal</h1>
+          <p>Create a member profile, then track deliveries, loans, and payouts as records are added.</p>
+        </div>
+      </section>
       <section className="auth-card">
         <div className="auth-brand">
           <Coffee size={28} />
@@ -44,6 +52,9 @@ export function SignupPage() {
         </div>
         <h1>Create account</h1>
         <p>Public signup creates a member account and profile.</p>
+
+        <SocialAuthButtons next="/portal" />
+        <div className="auth-divider"><span>or create manually</span></div>
 
         <form className="form-stack" onSubmit={handleSubmit}>
           <Input

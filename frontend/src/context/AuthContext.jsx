@@ -42,6 +42,15 @@ export function AuthProvider({ children }) {
     return nextUser;
   }, []);
 
+  const completeSocialLogin = useCallback(async ({ access, refresh }) => {
+    tokenStorage.setTokens({ access, refresh });
+    const profile = await authAPI.me();
+    const nextUser = normalizeUser(profile);
+    tokenStorage.setStoredUser(nextUser);
+    setUser(nextUser);
+    return nextUser;
+  }, []);
+
   const logout = useCallback(() => {
     tokenStorage.clearTokens();
     setUser(null);
@@ -54,10 +63,11 @@ export function AuthProvider({ children }) {
       role: user?.role,
       login,
       register,
+      completeSocialLogin,
       logout,
       isAuthenticated: Boolean(user && tokenStorage.getAccessToken()),
     }),
-    [login, logout, register, user],
+    [completeSocialLogin, login, logout, register, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

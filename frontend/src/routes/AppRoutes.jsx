@@ -9,6 +9,7 @@ import { LoanDetailPage } from "../pages/loans/LoanDetailPage";
 import { LoansPage } from "../pages/loans/LoansPage";
 import { LoginPage } from "../pages/auth/LoginPage";
 import { SignupPage } from "../pages/auth/SignupPage";
+import { AuthCallbackPage } from "../pages/auth/AuthCallbackPage";
 import { MemberDetailPage } from "../pages/members/MemberDetailPage";
 import { MemberFormPage } from "../pages/members/MemberFormPage";
 import { MembersListPage } from "../pages/members/MembersListPage";
@@ -66,6 +67,7 @@ function NotFound() {
 function resolveRoute(path) {
   if (path === "/login") return { public: true, element: <LoginPage /> };
   if (path === "/signup") return { public: true, element: <SignupPage /> };
+  if (path.startsWith("/auth/callback")) return { public: true, element: <AuthCallbackPage /> };
   if (path === "/portal") return { title: "Member Portal", roles: [ROLES.MEMBER], element: <MemberPortalPage />, bare: true };
   if (path === "/dashboard") return { title: "Dashboard", roles: [ROLES.ADMIN, ROLES.FIELD_OFFICER], element: <DashboardPage /> };
   if (path === "/members") return { title: "Members", roles: [ROLES.ADMIN, ROLES.FIELD_OFFICER], element: <MembersListPage /> };

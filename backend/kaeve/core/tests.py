@@ -1,5 +1,6 @@
 import json
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
@@ -302,6 +303,19 @@ class TokenAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("access", response.json())
+
+    def test_social_auth_start_redirects_to_provider(self):
+        with patch.dict("os.environ", {"GOOGLE_OAUTH_CLIENT_ID": "google-client"}):
+            response = self.client.get("/api/auth/social/google/start/?next=/dashboard")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("accounts.google.com", response["Location"])
+
+    def test_social_auth_start_requires_provider_configuration(self):
+        response = self.client.get("/api/auth/social/github/start/")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["detail"], "Github OAuth is not configured.")
 
     def test_access_token_can_call_role_protected_api(self):
         login_response = self.client.post(

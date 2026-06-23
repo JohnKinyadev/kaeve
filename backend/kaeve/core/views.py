@@ -1,11 +1,16 @@
 import json
+import os
+from urllib.error import URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth import authenticate
+from django.core import signing
 from django.db import transaction
 from django.db.models import Count, Sum
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.utils import timezone
@@ -66,6 +71,103 @@ from .services import (
 
 def health_check(request):
     return JsonResponse({"status": "ok", "service": "coffee-cooperative-api"})
+
+
+SOCIAL_AUTH_PROVIDERS = {
+    "google": {
+        "client_id_env": "GOOGLE_OAUTH_CLIENT_ID",
+        "client_secret_env": "GOOGLE_OAUTH_CLIENT_SECRET",
+        "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "profile_url": "https://www.googleapis.com/oauth2/v3/userinfo",
+        "scope": "openid email profile",
+    },
+    "github": {
+        "client_id_env": "GITHUB_OAUTH_CLIENT_ID",
+        "client_secret_env": "GITHUB_OAUTH_CLIENT_SECRET",
+        "authorize_url": "https://github.com/login/oauth/authorize",
+        "token_url": "https://github.com/login/oauth/access_token",
+        "profile_url": "https://api.github.com/user",
+        "scope": "read:user user:email",
+    },
+}
+
+
+def frontend_auth_redirect_url():
+    return os.environ.get("FRONTEND_AUTH_REDIRECT_URL", "http://localhost:5173").rstrip("/")
+
+
+def oauth_redirect_uri(request, provider):
+    return request.build_absolute_uri(f"/api/auth/social/{provider}/callback/")
+
+
+def json_post(url, payload):
+    request = Request(
+        url,
+        data=urlencode(payload).encode("utf-8"),
+        headers={"Accept": "application/json"},
+        method="POST",
+    )
+    with urlopen(request, timeout=15) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def json_get(url, access_token):
+    request = Request(url, headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"})
+    with urlopen(request, timeout=15) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def unique_social_username(base_username):
+    user_model = get_user_model()
+    base = "".join(char if char.isalnum() or char in "-_." else "-" for char in base_username).strip("-_.")
+    base = base[:120] or "social-user"
+    username = base
+    suffix = 1
+
+    while user_model.objects.filter(username=username).exists():
+        suffix += 1
+        username = f"{base[:112]}-{suffix}"
+
+    return username
+
+
+def get_or_create_social_user(provider, profile):
+    user_model = get_user_model()
+
+    if provider == "google":
+        provider_id = profile.get("sub")
+        email = profile.get("email") or ""
+        display_name = profile.get("name") or email
+    else:
+        provider_id = str(profile.get("id") or "")
+        email = profile.get("email") or f"github-{provider_id}@users.noreply.github.com"
+        display_name = profile.get("name") or profile.get("login") or email
+
+    username = email or f"{provider}-{provider_id}"
+    user = user_model.objects.filter(email__iexact=email).first() if email else None
+
+    if user is None:
+        user = user_model.objects.create_user(
+            username=unique_social_username(username.split("@")[0]),
+            email=email,
+        )
+        user.set_unusable_password()
+        user.save(update_fields=["password"])
+
+    if not getattr(user, "profile", None):
+        UserProfile.objects.create(user=user, role=UserProfile.Role.MEMBER)
+    elif not user.profile.role:
+        user.profile.role = UserProfile.Role.MEMBER
+        user.profile.save(update_fields=["role", "updated_at"])
+
+    if display_name and not user.first_name:
+        parts = display_name.split(" ", 1)
+        user.first_name = parts[0]
+        user.last_name = parts[1] if len(parts) > 1 else ""
+        user.save(update_fields=["first_name", "last_name"])
+
+    return user
 
 
 def create_user_account(payload, default_role=UserProfile.Role.MEMBER, allow_privileged_roles=False):
@@ -383,6 +485,91 @@ def register(request):
         ),
     }
     return JsonResponse(response, status=201)
+
+
+def social_auth_start(request, provider):
+    provider_config = SOCIAL_AUTH_PROVIDERS.get(provider)
+    if provider_config is None:
+        return JsonResponse({"detail": "Unsupported social login provider."}, status=404)
+
+    client_id = os.environ.get(provider_config["client_id_env"])
+    if not client_id:
+        return JsonResponse({"detail": f"{provider.title()} OAuth is not configured."}, status=503)
+
+    state = signing.dumps(
+        {
+            "provider": provider,
+            "next": request.GET.get("next") or "/dashboard",
+        },
+        salt="social-auth",
+    )
+    params = {
+        "client_id": client_id,
+        "redirect_uri": oauth_redirect_uri(request, provider),
+        "response_type": "code",
+        "scope": provider_config["scope"],
+        "state": state,
+    }
+    if provider == "google":
+        params["access_type"] = "online"
+        params["prompt"] = "select_account"
+
+    return redirect(f"{provider_config['authorize_url']}?{urlencode(params)}")
+
+
+def social_auth_callback(request, provider):
+    provider_config = SOCIAL_AUTH_PROVIDERS.get(provider)
+    if provider_config is None:
+        return JsonResponse({"detail": "Unsupported social login provider."}, status=404)
+
+    code = request.GET.get("code")
+    raw_state = request.GET.get("state")
+    if not code or not raw_state:
+        return JsonResponse({"detail": "OAuth callback is missing required parameters."}, status=400)
+
+    try:
+        state = signing.loads(raw_state, salt="social-auth", max_age=600)
+    except signing.BadSignature:
+        return JsonResponse({"detail": "Invalid OAuth state."}, status=400)
+
+    if state.get("provider") != provider:
+        return JsonResponse({"detail": "OAuth provider mismatch."}, status=400)
+
+    client_id = os.environ.get(provider_config["client_id_env"])
+    client_secret = os.environ.get(provider_config["client_secret_env"])
+    if not client_id or not client_secret:
+        return JsonResponse({"detail": f"{provider.title()} OAuth is not configured."}, status=503)
+
+    try:
+        token_response = json_post(
+            provider_config["token_url"],
+            {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": code,
+                "redirect_uri": oauth_redirect_uri(request, provider),
+                "grant_type": "authorization_code",
+            },
+        )
+        access_token = token_response.get("access_token")
+        if not access_token:
+            return JsonResponse({"detail": "OAuth provider did not return an access token."}, status=400)
+
+        profile = json_get(provider_config["profile_url"], access_token)
+    except (URLError, TimeoutError, json.JSONDecodeError):
+        return JsonResponse({"detail": "Unable to complete social login."}, status=502)
+
+    user = get_or_create_social_user(provider, profile)
+    tokens = create_token_pair(user)
+    next_path = state.get("next") or "/dashboard"
+    callback_params = urlencode(
+        {
+            "access": tokens["access"],
+            "refresh": tokens["refresh"],
+            "next": next_path,
+        }
+    )
+    return redirect(f"{frontend_auth_redirect_url()}/#/auth/callback?{callback_params}")
 
 
 @csrf_exempt

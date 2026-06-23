@@ -3,6 +3,7 @@ import { Coffee } from "lucide-react";
 
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
+import { SocialAuthButtons } from "../../components/shared/SocialAuthButtons";
 import { useAuth } from "../../hooks/useAuth";
 import { ROLES } from "../../utils/constants";
 
@@ -33,13 +34,23 @@ export function LoginPage() {
 
   return (
     <main className="auth-screen">
+      <section className="auth-copy">
+        <div className="auth-copy-inner">
+          <span className="eyebrow">Coffee operations</span>
+          <h1>Kaeve Coffee Cooperative</h1>
+          <p>Manage members, deliveries, loans, milling, inventory, and payouts from one focused workspace.</p>
+        </div>
+      </section>
       <section className="auth-card">
         <div className="auth-brand">
           <Coffee size={28} />
           <span>Kaeve Coffee</span>
         </div>
-        <h1>Sign in</h1>
+        <h1>Welcome back</h1>
         <p>Access the cooperative operations workspace.</p>
+
+        <SocialAuthButtons />
+        <div className="auth-divider"><span>or use password</span></div>
 
         <form className="form-stack" onSubmit={handleSubmit}>
           <Input
