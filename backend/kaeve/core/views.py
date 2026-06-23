@@ -17,6 +17,7 @@ from django.utils import timezone
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 
 from .auth_tokens import create_token, create_token_pair, get_active_token
@@ -39,6 +40,7 @@ from .permissions import (
     FIELD_OFFICER_ROLE,
     MANAGER_ROLE,
     MEMBER_ROLE,
+    SECRETARY_ROLE,
     RoleBasedApiPermission,
     get_user_role,
     role_required,
@@ -55,6 +57,7 @@ from .serializers import (
     PayoutStatementSerializer,
     SaleProceedSerializer,
     SeasonSerializer,
+    UserProfileSerializer,
 )
 from .services import (
     approve_loan,
@@ -286,6 +289,28 @@ class RoleScopedModelViewSet(viewsets.ModelViewSet):
         return queryset.none()
 
 
+class AdminOnlyPermission(BasePermission):
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and get_user_role(request.user) == ADMIN_ROLE)
+
+
+class UserProfileViewSet(viewsets.ModelViewSet):
+    queryset = UserProfile.objects.select_related("user").all()
+    serializer_class = UserProfileSerializer
+    permission_classes = [AdminOnlyPermission]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["user__username", "user__email", "phone_number", "role"]
+    ordering_fields = ["role", "created_at", "updated_at"]
+    ordering = ["user__username"]
+
+    def perform_update(self, serializer):
+        profile = serializer.save()
+        user = profile.user
+        user.is_staff = profile.role == UserProfile.Role.ADMIN
+        user.is_superuser = profile.role == UserProfile.Role.ADMIN
+        user.save(update_fields=["is_staff", "is_superuser"])
+
+
 class MemberViewSet(RoleScopedModelViewSet):
     queryset = Member.objects.select_related("user").all()
     serializer_class = MemberSerializer
@@ -414,11 +439,15 @@ class LoanViewSet(RoleScopedModelViewSet):
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
+        if get_user_role(request.user) not in {ADMIN_ROLE, MANAGER_ROLE}:
+            raise ValidationError({"detail": "Only admins and managers can approve loans."})
         loan = approve_loan(self.get_object(), request.user)
         return Response(self.get_serializer(loan).data)
 
     @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):
+        if get_user_role(request.user) not in {ADMIN_ROLE, MANAGER_ROLE}:
+            raise ValidationError({"detail": "Only admins and managers can reject loans."})
         loan = reject_loan(self.get_object(), request.user)
         return Response(self.get_serializer(loan).data)
 
@@ -658,7 +687,7 @@ def logout(request):
     return JsonResponse({"detail": "Logged out."})
 
 
-@role_required(ADMIN_ROLE, MANAGER_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
+@role_required(ADMIN_ROLE, MANAGER_ROLE, SECRETARY_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
 def me(request):
     member = getattr(request.user, "member_profile", None)
     return JsonResponse(
@@ -687,7 +716,7 @@ def me(request):
     )
 
 
-@role_required(ADMIN_ROLE, MANAGER_ROLE, FIELD_OFFICER_ROLE)
+@role_required(ADMIN_ROLE, MANAGER_ROLE, SECRETARY_ROLE, FIELD_OFFICER_ROLE)
 def dashboard_summary(request):
     active_season = Season.objects.filter(is_active=True, is_closed=False).first()
     deliveries = Delivery.objects.all()
@@ -710,7 +739,7 @@ def dashboard_summary(request):
     return JsonResponse(data)
 
 
-@role_required(ADMIN_ROLE, MANAGER_ROLE, FIELD_OFFICER_ROLE)
+@role_required(ADMIN_ROLE, MANAGER_ROLE, SECRETARY_ROLE, FIELD_OFFICER_ROLE)
 def season_intake_report(request, season_id):
     deliveries = Delivery.objects.filter(season_id=season_id)
     collection_points = (
@@ -733,7 +762,7 @@ def season_intake_report(request, season_id):
     )
 
 
-@role_required(ADMIN_ROLE, MANAGER_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
+@role_required(ADMIN_ROLE, MANAGER_ROLE, SECRETARY_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
 def collection_points(request):
     points = CollectionPoint.objects.filter(is_active=True).order_by("name")
     return JsonResponse(
@@ -746,7 +775,7 @@ def collection_points(request):
     )
 
 
-@role_required(ADMIN_ROLE, MANAGER_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
+@role_required(ADMIN_ROLE, MANAGER_ROLE, SECRETARY_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
 def payout_statement(request, member_id, season_id):
     member = get_object_or_404(Member, id=member_id)
     if get_user_role(request.user) == MEMBER_ROLE and member.user_id != request.user.id:
@@ -760,7 +789,7 @@ def payout_statement(request, member_id, season_id):
 
 @csrf_exempt
 @require_POST
-@role_required(ADMIN_ROLE)
+@role_required(ADMIN_ROLE, MANAGER_ROLE)
 def generate_payouts(request, season_id):
     season = get_object_or_404(Season, id=season_id)
     try:

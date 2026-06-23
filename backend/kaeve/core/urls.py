@@ -5,6 +5,7 @@ from . import views
 
 router = DefaultRouter()
 router.register("members", views.MemberViewSet)
+router.register("users", views.UserProfileViewSet)
 router.register("collection-points", views.CollectionPointViewSet)
 router.register("seasons", views.SeasonViewSet)
 router.register("deliveries", views.DeliveryViewSet)

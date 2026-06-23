@@ -10,6 +10,7 @@ from .models import AuthToken, UserProfile
 
 ADMIN_ROLE = UserProfile.Role.ADMIN
 MANAGER_ROLE = UserProfile.Role.MANAGER
+SECRETARY_ROLE = UserProfile.Role.SECRETARY
 FIELD_OFFICER_ROLE = UserProfile.Role.FIELD_OFFICER
 MEMBER_ROLE = UserProfile.Role.MEMBER
 
@@ -72,6 +73,13 @@ class RoleBasedAdminMixin:
             "delivery": {"view", "add", "change"},
             "loan": {"view"},
             "inventorystock": {"view"},
+        },
+        SECRETARY_ROLE: {
+            "member": {"view"},
+            "season": {"view"},
+            "loan": {"view", "add"},
+            "payout": {"view"},
+            "ledgerentry": {"view"},
         },
         MEMBER_ROLE: {
             "member": {"view"},
@@ -136,6 +144,13 @@ class RoleBasedApiPermission(BasePermission):
             "delivery": {"view", "add", "change"},
             "loan": {"view"},
             "inventorystock": {"view"},
+        },
+        SECRETARY_ROLE: {
+            "member": {"view"},
+            "season": {"view"},
+            "loan": {"view", "add"},
+            "payout": {"view"},
+            "ledgerentry": {"view"},
         },
         MEMBER_ROLE: {
             "member": {"view"},

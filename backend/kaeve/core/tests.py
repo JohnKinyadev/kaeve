@@ -94,6 +94,9 @@ class RoleProtectedApiTests(TestCase):
         self.field_user = get_user_model().objects.create_user(username="field", password="password")
         self.field_user.profile.role = UserProfile.Role.FIELD_OFFICER
         self.field_user.profile.save()
+        self.secretary_user = get_user_model().objects.create_user(username="secretary", password="password")
+        self.secretary_user.profile.role = UserProfile.Role.SECRETARY
+        self.secretary_user.profile.save()
         self.member_user = get_user_model().objects.create_user(username="member", password="password")
 
     def test_dashboard_requires_authentication(self):
@@ -122,6 +125,13 @@ class RoleProtectedApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_dashboard_allows_secretary_role(self):
+        self.client.login(username="secretary", password="password")
+
+        response = self.client.get("/api/dashboard-summary/")
+
+        self.assertEqual(response.status_code, 200)
+
     def test_generate_payouts_requires_admin_role(self):
         season = Season.objects.create(
             name="Main Crop 2026",
@@ -134,7 +144,7 @@ class RoleProtectedApiTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
 
-    def test_generate_payouts_rejects_manager_role(self):
+    def test_generate_payouts_allows_manager_role(self):
         season = Season.objects.create(
             name="Fly Crop 2026",
             season_type=Season.SeasonType.FLY_CROP,
@@ -143,6 +153,63 @@ class RoleProtectedApiTests(TestCase):
         self.client.login(username="ops-manager", password="password")
 
         response = self.client.post(f"/api/seasons/{season.id}/generate-payouts/")
+
+        self.assertIn(response.status_code, {200, 400})
+
+    def test_secretary_can_create_loan_but_not_approve(self):
+        member = Member.objects.create(
+            membership_number="SEC001",
+            full_name="Secretary Loan Member",
+            national_id="SEC001",
+            farm_size_acres=Decimal("1.50"),
+            location="Kiambu",
+        )
+        season = Season.objects.create(
+            name="Secretary Season",
+            season_type=Season.SeasonType.MAIN_CROP,
+            start_date=timezone.localdate(),
+        )
+        self.client.login(username="secretary", password="password")
+
+        create_response = self.client.post(
+            "/api/loans/",
+            json.dumps(
+                {
+                    "member": member.id,
+                    "season": season.id,
+                    "amount": "500.00",
+                    "reason": "Fertilizer",
+                }
+            ),
+            content_type="application/json",
+        )
+        loan = Loan.objects.get(member=member)
+        approve_response = self.client.post(f"/api/loans/{loan.id}/approve/")
+
+        self.assertEqual(create_response.status_code, 201)
+        self.assertEqual(approve_response.status_code, 403)
+
+    def test_admin_can_promote_user_role(self):
+        self.client.login(username="manager", password="password")
+
+        response = self.client.patch(
+            f"/api/users/{self.member_user.profile.id}/",
+            json.dumps({"role": UserProfile.Role.SECRETARY}),
+            content_type="application/json",
+        )
+        self.member_user.profile.refresh_from_db()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.member_user.profile.role, UserProfile.Role.SECRETARY)
+
+    def test_manager_cannot_promote_user_role(self):
+        self.client.login(username="ops-manager", password="password")
+
+        response = self.client.patch(
+            f"/api/users/{self.member_user.profile.id}/",
+            json.dumps({"role": UserProfile.Role.SECRETARY}),
+            content_type="application/json",
+        )
 
         self.assertEqual(response.status_code, 403)
 

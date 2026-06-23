@@ -18,6 +18,7 @@ class UserProfile(TimeStampedModel):
     class Role(models.TextChoices):
         ADMIN = "admin", "Admin"
         MANAGER = "manager", "Manager"
+        SECRETARY = "secretary", "Secretary"
         FIELD_OFFICER = "field_officer", "Field Officer"
         MEMBER = "member", "Member"
 
