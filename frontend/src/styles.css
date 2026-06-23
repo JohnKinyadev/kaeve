@@ -371,10 +371,30 @@ select {
   padding: 10px;
 }
 
+.form-success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  color: #166534;
+  padding: 10px;
+}
+
 .check-row {
   align-items: center;
   display: flex;
   gap: 8px;
+}
+
+.inline-select {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.inline-select span {
+  color: #6b7280;
+  font-size: 0.8rem;
+  font-weight: 800;
 }
 
 .table-wrap {

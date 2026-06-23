@@ -1,17 +1,19 @@
-import { Banknote, BarChart3, Factory, Home, Leaf, Scale, Users, WalletCards } from "lucide-react";
+import { Banknote, BarChart3, Boxes, Factory, Home, Leaf, Scale, UserCog, Users, WalletCards } from "lucide-react";
 
 import { ROLES } from "../../utils/constants";
 import { classNames } from "../../utils/helpers";
 
 const navItems = [
-  { label: "Dashboard", path: "/dashboard", icon: Home, roles: [ROLES.ADMIN, ROLES.FIELD_OFFICER] },
-  { label: "Members", path: "/members", icon: Users, roles: [ROLES.ADMIN, ROLES.FIELD_OFFICER] },
-  { label: "Seasons", path: "/seasons", icon: Leaf, roles: [ROLES.ADMIN] },
+  { label: "Dashboard", path: "/dashboard", icon: Home, roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY, ROLES.FIELD_OFFICER] },
+  { label: "Users", path: "/users", icon: UserCog, roles: [ROLES.ADMIN] },
+  { label: "Members", path: "/members", icon: Users, roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY, ROLES.FIELD_OFFICER] },
+  { label: "Seasons", path: "/seasons", icon: Leaf, roles: [ROLES.ADMIN, ROLES.MANAGER] },
   { label: "Deliveries", path: "/deliveries", icon: Scale, roles: [ROLES.ADMIN, ROLES.FIELD_OFFICER] },
-  { label: "Milling", path: "/milling", icon: Factory, roles: [ROLES.ADMIN] },
-  { label: "Loans", path: "/loans", icon: Banknote, roles: [ROLES.ADMIN] },
-  { label: "Payouts", path: "/payouts/main-2026", icon: WalletCards, roles: [ROLES.ADMIN] },
-  { label: "Reports", path: "/reports", icon: BarChart3, roles: [ROLES.ADMIN] },
+  { label: "Milling", path: "/milling", icon: Factory, roles: [ROLES.ADMIN, ROLES.MANAGER] },
+  { label: "Inventory", path: "/inventory", icon: Boxes, roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.FIELD_OFFICER] },
+  { label: "Loans", path: "/loans", icon: Banknote, roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY] },
+  { label: "Payouts", path: "/payouts/main-2026", icon: WalletCards, roles: [ROLES.ADMIN, ROLES.MANAGER] },
+  { label: "Reports", path: "/reports", icon: BarChart3, roles: [ROLES.ADMIN, ROLES.MANAGER] },
 ];
 
 export function Sidebar({ currentPath, role }) {
@@ -41,4 +43,3 @@ export function Sidebar({ currentPath, role }) {
     </aside>
   );
 }
-
