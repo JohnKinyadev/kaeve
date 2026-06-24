@@ -189,6 +189,40 @@ class RoleProtectedApiTests(TestCase):
         self.assertEqual(create_response.status_code, 201)
         self.assertEqual(approve_response.status_code, 403)
 
+    def test_secretary_can_view_and_create_deliveries(self):
+        member = Member.objects.create(
+            membership_number="DEL001",
+            full_name="Secretary Delivery Member",
+            national_id="DEL001",
+            farm_size_acres=Decimal("1.50"),
+            location="Kiambu",
+        )
+        season = Season.objects.create(
+            name="Delivery Season",
+            season_type=Season.SeasonType.MAIN_CROP,
+            start_date=timezone.localdate(),
+        )
+        point = CollectionPoint.objects.create(name="Secretary Point", location="Kiambu")
+        self.client.login(username="secretary", password="password")
+
+        list_response = self.client.get("/api/deliveries/")
+        create_response = self.client.post(
+            "/api/deliveries/",
+            json.dumps(
+                {
+                    "member": member.id,
+                    "season": season.id,
+                    "collection_point": point.id,
+                    "weight_kg": "25.00",
+                    "grade": Delivery.Grade.UNGRADED,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(create_response.status_code, 201)
+
     def test_admin_can_promote_user_role(self):
         self.client.login(username="manager", password="password")
 

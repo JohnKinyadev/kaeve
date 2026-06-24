@@ -77,6 +77,8 @@ class RoleBasedAdminMixin:
         SECRETARY_ROLE: {
             "member": {"view"},
             "season": {"view"},
+            "collectionpoint": {"view"},
+            "delivery": {"view", "add", "change"},
             "loan": {"view", "add"},
             "payout": {"view"},
             "ledgerentry": {"view"},
@@ -148,6 +150,8 @@ class RoleBasedApiPermission(BasePermission):
         SECRETARY_ROLE: {
             "member": {"view"},
             "season": {"view"},
+            "collectionpoint": {"view"},
+            "delivery": {"view", "add", "change"},
             "loan": {"view", "add"},
             "payout": {"view"},
             "ledgerentry": {"view"},

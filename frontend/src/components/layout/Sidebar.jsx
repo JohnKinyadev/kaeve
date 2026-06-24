@@ -8,7 +8,7 @@ const navItems = [
   { label: "Users", path: "/users", icon: UserCog, roles: [ROLES.ADMIN] },
   { label: "Members", path: "/members", icon: Users, roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY, ROLES.FIELD_OFFICER] },
   { label: "Seasons", path: "/seasons", icon: Leaf, roles: [ROLES.ADMIN, ROLES.MANAGER] },
-  { label: "Deliveries", path: "/deliveries", icon: Scale, roles: [ROLES.ADMIN, ROLES.FIELD_OFFICER] },
+  { label: "Deliveries", path: "/deliveries", icon: Scale, roles: [ROLES.ADMIN, ROLES.SECRETARY, ROLES.FIELD_OFFICER] },
   { label: "Milling", path: "/milling", icon: Factory, roles: [ROLES.ADMIN, ROLES.MANAGER] },
   { label: "Inventory", path: "/inventory", icon: Boxes, roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.FIELD_OFFICER] },
   { label: "Loans", path: "/loans", icon: Banknote, roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY] },

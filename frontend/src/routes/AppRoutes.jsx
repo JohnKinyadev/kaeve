@@ -80,8 +80,8 @@ function resolveRoute(path) {
   if (path.startsWith("/members/")) return { title: "Member Detail", roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY, ROLES.FIELD_OFFICER], element: <MemberDetailPage /> };
   if (path === "/seasons") return { title: "Seasons", roles: [ROLES.ADMIN, ROLES.MANAGER], element: <SeasonsListPage /> };
   if (path.startsWith("/seasons/")) return { title: "Season Detail", roles: [ROLES.ADMIN, ROLES.MANAGER], element: <SeasonDetailPage /> };
-  if (path === "/deliveries") return { title: "Deliveries", roles: [ROLES.ADMIN, ROLES.FIELD_OFFICER], element: <DeliveriesPage /> };
-  if (path === "/deliveries/log") return { title: "Log Delivery", roles: [ROLES.ADMIN, ROLES.FIELD_OFFICER], element: <LogDeliveryPage /> };
+  if (path === "/deliveries") return { title: "Deliveries", roles: [ROLES.ADMIN, ROLES.SECRETARY, ROLES.FIELD_OFFICER], element: <DeliveriesPage /> };
+  if (path === "/deliveries/log") return { title: "Log Delivery", roles: [ROLES.ADMIN, ROLES.SECRETARY, ROLES.FIELD_OFFICER], element: <LogDeliveryPage /> };
   if (path === "/milling") return { title: "Milling", roles: [ROLES.ADMIN, ROLES.MANAGER], element: <MillingPage /> };
   if (path === "/inventory") return { title: "Inventory", roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.FIELD_OFFICER], element: <InventoryPage /> };
   if (path === "/loans") return { title: "Loans", roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY], element: <LoansPage /> };

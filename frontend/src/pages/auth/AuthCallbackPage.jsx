@@ -7,6 +7,11 @@ function fallbackPath(role) {
   return role === ROLES.MEMBER ? "/portal" : "/dashboard";
 }
 
+function destinationForRole(role, requestedPath) {
+  if (role === ROLES.MEMBER) return "/portal";
+  return requestedPath || fallbackPath(role);
+}
+
 export function AuthCallbackPage() {
   const { completeSocialLogin } = useAuth();
   const [error, setError] = useState("");
@@ -26,7 +31,7 @@ export function AuthCallbackPage() {
 
       try {
         const user = await completeSocialLogin({ access, refresh });
-        window.location.hash = `#${next || fallbackPath(user?.role)}`;
+        window.location.hash = `#${destinationForRole(user?.role, next)}`;
       } catch (err) {
         setError(err.message || "Unable to complete social login.");
       }
@@ -41,6 +46,16 @@ export function AuthCallbackPage() {
         <h1>Finishing sign in</h1>
         <p>{error || "Securing your session and loading your workspace..."}</p>
         {error && <div className="form-error">{error}</div>}
+        {error && (
+          <div className="auth-actions">
+            <a className="btn btn-primary" href="#/signup">
+              Create account
+            </a>
+            <a className="btn btn-secondary" href="#/login">
+              Back to sign in
+            </a>
+          </div>
+        )}
       </section>
     </main>
   );

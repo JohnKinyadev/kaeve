@@ -249,6 +249,7 @@ a {
 
 .btn {
   padding: 0 14px;
+  text-decoration: none;
 }
 
 .btn-primary {
@@ -544,6 +545,17 @@ th {
   color: #15803d;
   font-weight: 900;
   text-decoration: none;
+}
+
+.auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.auth-actions .btn {
+  flex: 1 1 160px;
 }
 
 .auth-divider {
