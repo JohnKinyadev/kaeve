@@ -173,6 +173,34 @@ def get_or_create_social_user(provider, profile):
     return user
 
 
+def member_payload(member):
+    if not member:
+        return None
+    return {
+        "id": member.id,
+        "membership_number": member.membership_number,
+        "full_name": member.full_name,
+        "national_id": member.national_id,
+        "phone_number": member.phone_number,
+        "farm_size_acres": str(member.farm_size_acres),
+        "location": member.location,
+        "status": member.status,
+    }
+
+
+def user_payload(user):
+    member = getattr(user, "member_profile", None)
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "role": get_user_role(user),
+        "is_staff": user.is_staff,
+        "is_superuser": user.is_superuser,
+        "member": member_payload(member),
+    }
+
+
 def create_user_account(payload, default_role=UserProfile.Role.MEMBER, allow_privileged_roles=False):
     username = (payload.get("username") or "").strip()
     email = (payload.get("email") or "").strip()
@@ -492,27 +520,7 @@ def register(request):
         return error_response
 
     response = create_token_pair(user)
-    member = getattr(user, "member_profile", None)
-    response["user"] = {
-        "id": user.id,
-        "username": user.username,
-        "email": user.email,
-        "role": get_user_role(user),
-        "member": (
-            {
-                "id": member.id,
-                "membership_number": member.membership_number,
-                "full_name": member.full_name,
-                "national_id": member.national_id,
-                "phone_number": member.phone_number,
-                "farm_size_acres": str(member.farm_size_acres),
-                "location": member.location,
-                "status": member.status,
-            }
-            if member
-            else None
-        ),
-    }
+    response["user"] = user_payload(user)
     return JsonResponse(response, status=201)
 
 
@@ -689,31 +697,36 @@ def logout(request):
 
 @role_required(ADMIN_ROLE, MANAGER_ROLE, SECRETARY_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
 def me(request):
-    member = getattr(request.user, "member_profile", None)
-    return JsonResponse(
-        {
-            "id": request.user.id,
-            "username": request.user.username,
-            "email": request.user.email,
-            "role": get_user_role(request.user),
-            "is_staff": request.user.is_staff,
-            "is_superuser": request.user.is_superuser,
-            "member": (
-                {
-                    "id": member.id,
-                    "membership_number": member.membership_number,
-                    "full_name": member.full_name,
-                    "national_id": member.national_id,
-                    "phone_number": member.phone_number,
-                    "farm_size_acres": str(member.farm_size_acres),
-                    "location": member.location,
-                    "status": member.status,
-                }
-                if member
-                else None
-            ),
-        }
-    )
+    return JsonResponse(user_payload(request.user))
+
+
+@require_POST
+@role_required(MEMBER_ROLE)
+def complete_member_profile(request):
+    if getattr(request.user, "member_profile", None):
+        return JsonResponse({"detail": "Member profile is already complete."}, status=400)
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON body."}, status=400)
+
+    profile_data = {
+        "membership_number": (payload.get("membership_number") or f"MEM{request.user.id:05d}").strip(),
+        "full_name": (payload.get("full_name") or "").strip(),
+        "national_id": (payload.get("national_id") or "").strip(),
+        "phone_number": (payload.get("phone_number") or "").strip(),
+        "farm_size_acres": payload.get("farm_size_acres"),
+        "location": (payload.get("location") or "").strip(),
+    }
+    serializer = MemberSerializer(data=profile_data)
+    if not serializer.is_valid():
+        return JsonResponse(serializer.errors, status=400)
+
+    member = serializer.save(user=request.user)
+    request.user.profile.phone_number = member.phone_number
+    request.user.profile.save(update_fields=["phone_number", "updated_at"])
+    return JsonResponse(user_payload(request.user), status=201)
 
 
 @role_required(ADMIN_ROLE, MANAGER_ROLE, SECRETARY_ROLE, FIELD_OFFICER_ROLE)

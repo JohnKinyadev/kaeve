@@ -25,6 +25,7 @@ urlpatterns = [
     path("auth/refresh/", views.refresh_access_token, name="refresh-access-token"),
     path("auth/logout/", views.logout, name="logout"),
     path("auth/me/", views.me, name="me"),
+    path("auth/complete-member-profile/", views.complete_member_profile, name="complete-member-profile"),
     path("health/", views.health_check, name="health-check"),
     path("dashboard-summary/", views.dashboard_summary, name="dashboard-summary"),
     path("active-collection-points/", views.collection_points, name="active-collection-points"),

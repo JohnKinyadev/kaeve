@@ -303,6 +303,36 @@ class TokenAuthTests(TestCase):
         self.assertEqual(member.full_name, "Linked Member")
         self.assertEqual(member.membership_number, f"MEM{user.id:05d}")
 
+    def test_member_can_complete_missing_profile(self):
+        user = get_user_model().objects.create_user(
+            username="social-member",
+            email="social-member@example.com",
+            password="password",
+        )
+        user.profile.role = UserProfile.Role.MEMBER
+        user.profile.save()
+        self.client.login(username="social-member", password="password")
+
+        response = self.client.post(
+            "/api/auth/complete-member-profile/",
+            json.dumps(
+                {
+                    "full_name": "Social Member",
+                    "national_id": "SOCIAL001",
+                    "phone_number": "0711222444",
+                    "farm_size_acres": "1.75",
+                    "location": "Kiambu",
+                }
+            ),
+            content_type="application/json",
+        )
+        user.refresh_from_db()
+        member = user.member_profile
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(member.full_name, "Social Member")
+        self.assertEqual(response.json()["member"]["id"], member.id)
+
     def test_register_rejects_privileged_role(self):
         response = self.client.post(
             "/api/auth/register/",

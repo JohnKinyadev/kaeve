@@ -10,7 +10,7 @@ export function PageWrapper({ title, subtitle = "Main crop 2026", currentPath, c
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <main className={classNames("app-shell", isSidebarOpen && "sidebar-open")}>
+    <main className={classNames("app-shell", role && `role-${role}`, isSidebarOpen && "sidebar-open")}>
       <Sidebar currentPath={currentPath} role={role} />
       <section className="workspace">
         <Navbar title={title} subtitle={subtitle} onMenuClick={() => setIsSidebarOpen((value) => !value)} />
@@ -19,4 +19,3 @@ export function PageWrapper({ title, subtitle = "Main crop 2026", currentPath, c
     </main>
   );
 }
-

@@ -112,6 +112,15 @@ a {
   padding: 26px;
 }
 
+.app-shell.role-MANAGER .workspace,
+.app-shell.role-SECRETARY .workspace,
+.app-shell.role-FIELD_OFFICER .workspace,
+.portal-screen.role-MEMBER {
+  background:
+    radial-gradient(circle at 12% 0%, rgb(21 128 61 / 0.16), transparent 32%),
+    linear-gradient(135deg, #f0fdf4 0%, #f9fafb 48%, #fffbeb 100%);
+}
+
 .topbar,
 .portal-header {
   align-items: center;
@@ -119,6 +128,17 @@ a {
   gap: 18px;
   justify-content: space-between;
   margin-bottom: 24px;
+}
+
+.app-shell.role-MANAGER .topbar,
+.app-shell.role-SECRETARY .topbar,
+.app-shell.role-FIELD_OFFICER .topbar,
+.portal-screen.role-MEMBER .portal-header {
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.94), rgb(220 252 231 / 0.78));
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgb(20 83 45 / 0.08);
+  padding: 16px;
 }
 
 .topbar-title,
@@ -187,6 +207,22 @@ a {
   padding: 20px;
 }
 
+.app-shell.role-MANAGER .panel,
+.app-shell.role-SECRETARY .panel,
+.app-shell.role-FIELD_OFFICER .panel,
+.portal-screen.role-MEMBER .panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f7fee7 100%);
+  border-color: #bbf7d0;
+}
+
+.app-shell.role-MANAGER .panel-header,
+.app-shell.role-SECRETARY .panel-header,
+.app-shell.role-FIELD_OFFICER .panel-header,
+.portal-screen.role-MEMBER .panel-header {
+  border-bottom: 1px solid #dcfce7;
+  padding-bottom: 12px;
+}
+
 .panel-header,
 .profile-header {
   align-items: flex-start;
@@ -218,6 +254,23 @@ a {
   gap: 8px;
   min-height: 132px;
   padding: 18px;
+}
+
+.app-shell.role-MANAGER .stat-card,
+.app-shell.role-SECRETARY .stat-card,
+.app-shell.role-FIELD_OFFICER .stat-card,
+.portal-screen.role-MEMBER .stat-card {
+  background:
+    linear-gradient(135deg, #ffffff 0%, #ecfdf5 68%, #fef3c7 100%);
+  border-color: #bbf7d0;
+}
+
+.app-shell.role-MANAGER .stat-icon,
+.app-shell.role-SECRETARY .stat-icon,
+.app-shell.role-FIELD_OFFICER .stat-icon,
+.portal-screen.role-MEMBER .stat-icon {
+  background: #14532d;
+  color: #fef3c7;
 }
 
 .stat-card strong {
