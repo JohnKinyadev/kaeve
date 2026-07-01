@@ -12,11 +12,6 @@ export function SignupPage() {
     username: "",
     email: "",
     password: "",
-    full_name: "",
-    national_id: "",
-    phone_number: "",
-    farm_size_acres: "",
-    location: "",
   });
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,7 +37,7 @@ export function SignupPage() {
         <div className="auth-copy-inner">
           <span className="eyebrow">Member onboarding</span>
           <h1>Join the cooperative portal</h1>
-          <p>Create a member profile, then track deliveries, loans, and payouts as records are added.</p>
+          <p>Create your login first. After signing in, finish your member details inside the portal.</p>
         </div>
       </section>
       <section className="auth-card">
@@ -51,9 +46,9 @@ export function SignupPage() {
           <span>Kaeve Coffee</span>
         </div>
         <h1>Create account</h1>
-        <p>Public signup creates a member account and profile.</p>
+        <p>Start with your username, email, and password.</p>
 
-        <SocialAuthButtons next="/portal" />
+        <SocialAuthButtons next="/portal" showGithub={false} />
         <div className="auth-divider"><span>or create manually</span></div>
 
         <form className="form-stack" onSubmit={handleSubmit}>
@@ -77,37 +72,6 @@ export function SignupPage() {
             autoComplete="new-password"
             value={form.password}
             onChange={(event) => setForm((value) => ({ ...value, password: event.target.value }))}
-            required
-          />
-          <Input
-            label="Full name"
-            value={form.full_name}
-            onChange={(event) => setForm((value) => ({ ...value, full_name: event.target.value }))}
-            required
-          />
-          <Input
-            label="National ID"
-            value={form.national_id}
-            onChange={(event) => setForm((value) => ({ ...value, national_id: event.target.value }))}
-            required
-          />
-          <Input
-            label="Phone number"
-            value={form.phone_number}
-            onChange={(event) => setForm((value) => ({ ...value, phone_number: event.target.value }))}
-          />
-          <Input
-            label="Farm size acres"
-            type="number"
-            step="0.01"
-            value={form.farm_size_acres}
-            onChange={(event) => setForm((value) => ({ ...value, farm_size_acres: event.target.value }))}
-            required
-          />
-          <Input
-            label="Location"
-            value={form.location}
-            onChange={(event) => setForm((value) => ({ ...value, location: event.target.value }))}
             required
           />
           {error && <div className="form-error">{error}</div>}

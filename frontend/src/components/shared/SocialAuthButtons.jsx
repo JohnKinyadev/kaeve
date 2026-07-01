@@ -7,7 +7,7 @@ function GoogleMark() {
   return <span className="google-mark">G</span>;
 }
 
-export function SocialAuthButtons({ next = "/dashboard" }) {
+export function SocialAuthButtons({ next = "/dashboard", showGithub = true }) {
   function start(provider) {
     window.location.href = authProviderUrl(provider, next);
   }
@@ -17,9 +17,11 @@ export function SocialAuthButtons({ next = "/dashboard" }) {
       <Button variant="secondary" onClick={() => start("google")}>
         <GoogleMark /> Continue with Google
       </Button>
-      <Button variant="secondary" onClick={() => start("github")}>
-        <Github size={18} /> Continue with GitHub
-      </Button>
+      {showGithub && (
+        <Button variant="secondary" onClick={() => start("github")}>
+          <Github size={18} /> Continue with GitHub
+        </Button>
+      )}
     </div>
   );
 }
