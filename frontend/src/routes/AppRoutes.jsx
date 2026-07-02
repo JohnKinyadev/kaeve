@@ -68,11 +68,13 @@ function NotFound() {
   );
 }
 
-function resolveRoute(path) {
+function resolveRoute(path, role) {
   if (path === "/login") return { public: true, element: <LoginPage /> };
   if (path === "/signup") return { public: true, element: <SignupPage /> };
   if (path.startsWith("/auth/callback")) return { public: true, element: <AuthCallbackPage /> };
-  if (path === "/portal") return { title: "Member Portal", roles: [ROLES.MEMBER], element: <MemberPortalPage />, bare: true };
+  if (path === "/portal") return { title: "Member Dashboard", roles: [ROLES.MEMBER], element: <MemberPortalPage initialTab="overview" /> };
+  if (path === "/complete-registration") return { title: "Complete Registration", roles: [ROLES.MEMBER], element: <MemberPortalPage initialTab="complete" /> };
+  if (path === "/dashboard" && role === ROLES.MEMBER) return { title: "Member Dashboard", roles: [ROLES.MEMBER], element: <MemberPortalPage initialTab="overview" /> };
   if (path === "/dashboard") return { title: "Dashboard", roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY, ROLES.FIELD_OFFICER], element: <DashboardPage /> };
   if (path === "/users") return { title: "Users", roles: [ROLES.ADMIN], element: <UsersPage /> };
   if (path === "/members") return { title: "Members", roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY, ROLES.FIELD_OFFICER], element: <MembersListPage /> };
@@ -95,11 +97,11 @@ function resolveRoute(path) {
 export function AppRoutes() {
   const path = useHashPath();
   const { isAuthenticated, role } = useAuth();
-  const route = useMemo(() => resolveRoute(path), [path]);
+  const route = useMemo(() => resolveRoute(path, role), [path, role]);
 
   useEffect(() => {
     if (path === "/" || path === "") {
-      window.location.hash = isAuthenticated && role === ROLES.MEMBER ? "#/portal" : "#/dashboard";
+      window.location.hash = "#/dashboard";
     }
   }, [isAuthenticated, path, role]);
 

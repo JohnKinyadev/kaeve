@@ -4,7 +4,8 @@ import { ROLES } from "../../utils/constants";
 import { classNames } from "../../utils/helpers";
 
 const navItems = [
-  { label: "Dashboard", path: "/dashboard", icon: Home, roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY, ROLES.FIELD_OFFICER] },
+  { label: "Dashboard", path: "/dashboard", icon: Home, roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY, ROLES.FIELD_OFFICER, ROLES.MEMBER] },
+  { label: "Complete Registration", path: "/complete-registration", icon: UserCog, roles: [ROLES.MEMBER] },
   { label: "Users", path: "/users", icon: UserCog, roles: [ROLES.ADMIN] },
   { label: "Members", path: "/members", icon: Users, roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY, ROLES.FIELD_OFFICER] },
   { label: "Seasons", path: "/seasons", icon: Leaf, roles: [ROLES.ADMIN, ROLES.MANAGER] },

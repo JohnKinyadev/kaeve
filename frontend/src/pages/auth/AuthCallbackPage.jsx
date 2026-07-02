@@ -1,16 +1,6 @@
 import { useEffect, useState } from "react";
 
 import { useAuth } from "../../hooks/useAuth";
-import { ROLES } from "../../utils/constants";
-
-function fallbackPath(role) {
-  return role === ROLES.MEMBER ? "/portal" : "/dashboard";
-}
-
-function destinationForRole(role, requestedPath) {
-  if (role === ROLES.MEMBER) return "/portal";
-  return requestedPath || fallbackPath(role);
-}
 
 export function AuthCallbackPage() {
   const { completeSocialLogin } = useAuth();
@@ -30,8 +20,8 @@ export function AuthCallbackPage() {
       }
 
       try {
-        const user = await completeSocialLogin({ access, refresh });
-        window.location.hash = `#${destinationForRole(user?.role, next)}`;
+        await completeSocialLogin({ access, refresh });
+        window.location.hash = `#${next || "/dashboard"}`;
       } catch (err) {
         setError(err.message || "Unable to complete social login.");
       }

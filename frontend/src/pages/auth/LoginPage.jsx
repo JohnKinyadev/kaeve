@@ -5,11 +5,6 @@ import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { SocialAuthButtons } from "../../components/shared/SocialAuthButtons";
 import { useAuth } from "../../hooks/useAuth";
-import { ROLES } from "../../utils/constants";
-
-function nextPathForRole(role) {
-  return role === ROLES.MEMBER ? "/portal" : "/dashboard";
-}
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -23,8 +18,8 @@ export function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const user = await login(credentials);
-      window.location.hash = `#${nextPathForRole(user?.role)}`;
+      await login(credentials);
+      window.location.hash = "#/dashboard";
     } catch (err) {
       setError(err.message || "Invalid email or password");
     } finally {
@@ -49,7 +44,7 @@ export function LoginPage() {
         <h1>Welcome back</h1>
         <p>Access the cooperative operations workspace.</p>
 
-        <SocialAuthButtons />
+        <SocialAuthButtons showGithub={false} />
         <div className="auth-divider"><span>or use password</span></div>
 
         <form className="form-stack" onSubmit={handleSubmit}>

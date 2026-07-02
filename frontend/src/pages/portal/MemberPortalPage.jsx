@@ -15,8 +15,9 @@ function listResults(response) {
   return response?.results || [];
 }
 
-export function MemberPortalPage() {
+export function MemberPortalPage({ initialTab = "overview" }) {
   const { user, logout, refreshUser } = useAuth();
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [deliveries, setDeliveries] = useState([]);
   const [loans, setLoans] = useState([]);
   const [payouts, setPayouts] = useState([]);
@@ -31,6 +32,10 @@ export function MemberPortalPage() {
   const [profileError, setProfileError] = useState("");
   const [isCompletingProfile, setIsCompletingProfile] = useState(false);
   const member = user?.member;
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   async function handleProfileSubmit(event) {
     event.preventDefault();
@@ -82,6 +87,7 @@ export function MemberPortalPage() {
   const lastDelivery = deliveries[0]?.delivery_date || deliveries[0]?.created_at;
   const activeLoan = loans[0];
   const latestPayout = payouts[0];
+  const needsProfile = !member;
 
   return (
     <main className="portal-screen role-member">
@@ -93,7 +99,23 @@ export function MemberPortalPage() {
         <Button variant="secondary" onClick={logout}>Logout</Button>
       </section>
 
-      {!member && (
+      <section className="tabs member-tabs" aria-label="Member dashboard sections">
+        <button className={activeTab === "overview" ? "active" : ""} type="button" onClick={() => setActiveTab("overview")}>
+          Overview
+        </button>
+        <button className={activeTab === "complete" ? "active" : ""} type="button" onClick={() => setActiveTab("complete")}>
+          Complete Registration
+        </button>
+      </section>
+
+      {needsProfile && activeTab === "overview" && (
+        <article className="panel empty-state">
+          <h2>Complete your profile details</h2>
+          <p>Your account is ready. Add your cooperative member details to unlock deliveries, loans, and payouts.</p>
+        </article>
+      )}
+
+      {activeTab === "complete" && !member && (
         <article className="panel form-panel member-completion-panel">
           <div className="panel-header">
             <div>
@@ -143,35 +165,42 @@ export function MemberPortalPage() {
         </article>
       )}
 
+      {activeTab === "complete" && member && (
+        <article className="panel empty-state">
+          <h2>Registration complete</h2>
+          <p>Your profile is linked to membership number {member.membership_number}.</p>
+        </article>
+      )}
+
       {error && <div className="form-error">{error}</div>}
 
-      {member && (
+      {activeTab === "overview" && (
         <>
           <section className="stat-grid">
             <StatCard
               icon={Scale}
               label="Season Deliveries"
               value={formatKg(totalKg)}
-              detail={lastDelivery ? `Last delivery: ${formatDate(lastDelivery)}` : "No deliveries recorded"}
+              detail={needsProfile ? "Complete registration to unlock records" : lastDelivery ? `Last delivery: ${formatDate(lastDelivery)}` : "No deliveries recorded"}
             />
             <StatCard
               icon={Banknote}
               label="Loan Status"
-              value={activeLoan?.status_display || activeLoan?.status || "No active loan"}
-              detail={activeLoan ? formatCurrency(Number(activeLoan.amount || 0)) : "No deductions pending"}
+              value={needsProfile ? "Pending profile" : activeLoan?.status_display || activeLoan?.status || "No active loan"}
+              detail={needsProfile ? "Loan records appear after verification" : activeLoan ? formatCurrency(Number(activeLoan.amount || 0)) : "No deductions pending"}
             />
             <StatCard
               icon={WalletCards}
               label="Latest Payout"
-              value={latestPayout ? formatCurrency(Number(latestPayout.net_payable || 0)) : formatCurrency(0)}
-              detail={latestPayout?.season_name || "No payout generated"}
+              value={needsProfile ? formatCurrency(0) : latestPayout ? formatCurrency(Number(latestPayout.net_payable || 0)) : formatCurrency(0)}
+              detail={needsProfile ? "Payouts appear after profile completion" : latestPayout?.season_name || "No payout generated"}
             />
           </section>
           <article className="panel">
             <div className="panel-header">
               <div>
                 <h2>Recent Deliveries</h2>
-                <span>{member.membership_number || "Member records"}</span>
+                <span>{member?.membership_number || "Complete registration to link records"}</span>
               </div>
               <Button disabled={!latestPayout}><Download size={16} /> Download</Button>
             </div>

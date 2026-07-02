@@ -701,6 +701,10 @@ th {
   color: #fff;
 }
 
+.member-tabs {
+  margin-bottom: 16px;
+}
+
 .modal-backdrop {
   align-items: center;
   background: rgb(17 24 39 / 0.45);

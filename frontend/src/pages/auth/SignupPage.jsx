@@ -23,7 +23,7 @@ export function SignupPage() {
 
     try {
       await register(form);
-      window.location.hash = "#/portal";
+      window.location.hash = "#/dashboard";
     } catch (err) {
       setError(err.message || "Unable to create account");
     } finally {
@@ -48,7 +48,7 @@ export function SignupPage() {
         <h1>Create account</h1>
         <p>Start with your username, email, and password.</p>
 
-        <SocialAuthButtons next="/portal" showGithub={false} />
+        <SocialAuthButtons next="/dashboard" showGithub={false} />
         <div className="auth-divider"><span>or create manually</span></div>
 
         <form className="form-stack" onSubmit={handleSubmit}>
