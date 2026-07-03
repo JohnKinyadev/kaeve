@@ -700,6 +700,7 @@ def me(request):
     return JsonResponse(user_payload(request.user))
 
 
+@csrf_exempt
 @require_POST
 @role_required(MEMBER_ROLE)
 def complete_member_profile(request):
