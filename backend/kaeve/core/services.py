@@ -7,10 +7,48 @@ from .models import Delivery, InventoryStock, LedgerEntry, Loan, Payout, SalePro
 
 
 MONEY_PLACES = Decimal("0.01")
+DEFAULT_CHERRY_ADVANCE_RATE = Decimal("50.00")
+MIN_CHERRY_ADVANCE_RATE = Decimal("40.00")
+MAX_CHERRY_ADVANCE_RATE = Decimal("60.00")
+MAX_UNSECURED_SACCO_LOAN = Decimal("1000000.00")
+MIN_SUPPORTIVE_INTEREST_RATE = Decimal("5.00")
+MAX_SUPPORTIVE_INTEREST_RATE = Decimal("7.50")
+ESTIMATED_KG_PER_ACRE = Decimal("500.00")
 
 
 def money(value):
     return Decimal(value or 0).quantize(MONEY_PLACES, rounding=ROUND_HALF_UP)
+
+
+def member_delivery_kg(member, season=None):
+    deliveries = Delivery.objects.filter(member=member)
+    if season:
+        deliveries = deliveries.filter(season=season)
+    return deliveries.aggregate(total=Sum("weight_kg"))["total"] or Decimal("0")
+
+
+def clamp_interest_rate(rate):
+    rate = Decimal(rate or MIN_SUPPORTIVE_INTEREST_RATE)
+    return min(max(rate, MIN_SUPPORTIVE_INTEREST_RATE), MAX_SUPPORTIVE_INTEREST_RATE)
+
+
+def clamp_cherry_rate(rate):
+    rate = Decimal(rate or DEFAULT_CHERRY_ADVANCE_RATE)
+    return min(max(rate, MIN_CHERRY_ADVANCE_RATE), MAX_CHERRY_ADVANCE_RATE)
+
+
+def calculate_loan_eligibility(member, season, loan_type, proof_type, expected_production_kg=0, rate_per_kg=0, savings_amount=0):
+    expected_production_kg = Decimal(expected_production_kg or 0)
+    savings_amount = Decimal(savings_amount or 0)
+    rate_per_kg = clamp_cherry_rate(rate_per_kg)
+
+    if loan_type in {Loan.LoanType.CHERRY_ADVANCE, Loan.LoanType.INPUT_ADVANCE}:
+        delivered_kg = member_delivery_kg(member, season)
+        acreage_estimate = Decimal(member.farm_size_acres or 0) * ESTIMATED_KG_PER_ACRE
+        production_kg = max(delivered_kg, expected_production_kg, acreage_estimate)
+        return money(production_kg * rate_per_kg)
+
+    return money(min(savings_amount * Decimal("3"), MAX_UNSECURED_SACCO_LOAN))
 
 
 def get_season_total_delivery_kg(season):
@@ -22,6 +60,15 @@ def get_season_net_proceeds(season):
     gross = sales.aggregate(total=Sum("gross_amount"))["total"] or Decimal("0")
     expenses = sales.aggregate(total=Sum("expenses"))["total"] or Decimal("0")
     return gross - expenses
+
+
+def get_approved_loan_recovery_total(member_id, season):
+    loans = Loan.objects.filter(
+        member_id=member_id,
+        season=season,
+        status__in=[Loan.Status.APPROVED, Loan.Status.DEDUCTED],
+    )
+    return money(sum((loan.recovery_amount for loan in loans), Decimal("0")))
 
 
 def update_inventory_quantity(season, stock_type, warehouse, delta_kg):
@@ -194,10 +241,7 @@ def get_payout_statement(member, season):
         },
         "totals": {
             "delivered_kg": deliveries.aggregate(total=Sum("weight_kg"))["total"] or Decimal("0.00"),
-            "approved_loans": loans.filter(status__in=[Loan.Status.APPROVED, Loan.Status.DEDUCTED]).aggregate(
-                total=Sum("amount")
-            )["total"]
-            or Decimal("0.00"),
+            "approved_loans": get_approved_loan_recovery_total(member.id, season),
             "net_payable": payout.net_payable if payout else Decimal("0.00"),
         },
         "payout": payout,
@@ -229,14 +273,7 @@ def generate_season_payouts(season, generated_by):
         member_id = row["member"]
         delivered_kg = row["delivered_kg"] or Decimal("0")
         gross_share = money((delivered_kg / total_kg) * net_proceeds)
-        loan_deductions = (
-            Loan.objects.filter(
-                member_id=member_id,
-                season=season,
-                status__in=[Loan.Status.APPROVED, Loan.Status.DEDUCTED],
-            ).aggregate(total=Sum("amount"))["total"]
-            or Decimal("0")
-        )
+        loan_deductions = get_approved_loan_recovery_total(member_id, season)
         net_payable = money(gross_share - loan_deductions)
 
         payout_defaults = {

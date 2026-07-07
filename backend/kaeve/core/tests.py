@@ -78,7 +78,7 @@ class PayoutServiceTests(TestCase):
         payouts = generate_season_payouts(season, user)
 
         self.assertEqual(len(payouts), 2)
-        self.assertEqual(member_one.payouts.get(season=season).net_payable, Decimal("5750.00"))
+        self.assertEqual(member_one.payouts.get(season=season).net_payable, Decimal("5725.00"))
         self.assertEqual(member_two.payouts.get(season=season).net_payable, Decimal("2250.00"))
 
 
@@ -187,6 +187,34 @@ class RoleProtectedApiTests(TestCase):
         approve_response = self.client.post(f"/api/loans/{loan.id}/approve/")
 
         self.assertEqual(create_response.status_code, 201)
+        self.assertEqual(approve_response.status_code, 403)
+
+    def test_member_can_apply_for_own_loan_but_not_approve(self):
+        member = Member.objects.create(
+            user=self.member_user,
+            membership_number="MEMLOAN001",
+            full_name="Member Loan Applicant",
+            national_id="MEMLOAN001",
+            farm_size_acres=Decimal("1.50"),
+            location="Kiambu",
+        )
+        season = Season.objects.create(
+            name="Member Loan Season",
+            season_type=Season.SeasonType.MAIN_CROP,
+            start_date=timezone.localdate(),
+        )
+        self.client.login(username="member", password="password")
+
+        apply_response = self.client.post(
+            "/api/loans/apply/",
+            json.dumps({"amount": "750.00", "reason": "Farm inputs"}),
+            content_type="application/json",
+        )
+        loan = Loan.objects.get(member=member, season=season)
+        approve_response = self.client.post(f"/api/loans/{loan.id}/approve/")
+
+        self.assertEqual(apply_response.status_code, 201)
+        self.assertEqual(loan.status, Loan.Status.PENDING)
         self.assertEqual(approve_response.status_code, 403)
 
     def test_secretary_can_view_and_create_deliveries(self):

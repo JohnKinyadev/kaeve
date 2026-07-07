@@ -227,6 +227,19 @@ class InventoryStock(TimeStampedModel):
 
 
 class Loan(TimeStampedModel):
+    class LoanType(models.TextChoices):
+        CHERRY_ADVANCE = "cherry_advance", "Cherry Advance"
+        INPUT_ADVANCE = "input_advance", "Farm Input Advance"
+        DEVELOPMENT = "development", "Development Loan"
+        SCHOOL_FEES = "school_fees", "School Fees Loan"
+        EMERGENCY = "emergency", "Emergency Loan"
+
+    class ProofType(models.TextChoices):
+        DELIVERY_HISTORY = "delivery_history", "Recent Delivery Schedule"
+        FARM_ACREAGE = "farm_acreage", "Farm Acreage"
+        HISTORICAL_YIELD = "historical_yield", "Historical Yield"
+        SAVINGS = "savings", "Savings or Shares"
+
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         APPROVED = "approved", "Approved"
@@ -235,8 +248,18 @@ class Loan(TimeStampedModel):
 
     member = models.ForeignKey(Member, on_delete=models.PROTECT, related_name="loans")
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="loans")
+    loan_type = models.CharField(max_length=30, choices=LoanType.choices, default=LoanType.CHERRY_ADVANCE)
+    proof_type = models.CharField(max_length=30, choices=ProofType.choices, default=ProofType.DELIVERY_HISTORY)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    eligible_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    expected_production_kg = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    rate_per_kg = models.DecimalField(max_digits=8, decimal_places=2, default=50)
+    savings_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    interest_rate_percent = models.DecimalField(max_digits=5, decimal_places=2, default=5)
+    term_months = models.PositiveIntegerField(default=6)
     reason = models.TextField(blank=True)
+    guarantor_details = models.TextField(blank=True)
+    collateral_details = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     requested_on = models.DateField(default=timezone.localdate)
     reviewed_by = models.ForeignKey(
@@ -264,6 +287,16 @@ class Loan(TimeStampedModel):
         self.reviewed_by = reviewed_by
         self.reviewed_at = timezone.now()
         self.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+
+    @property
+    def estimated_interest(self):
+        rate = Decimal(self.interest_rate_percent or 0) / Decimal("100")
+        term_fraction = Decimal(self.term_months or 0) / Decimal("12")
+        return (Decimal(self.amount or 0) * rate * term_fraction).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    @property
+    def recovery_amount(self):
+        return (Decimal(self.amount or 0) + self.estimated_interest).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     def __str__(self):
         return f"{self.member} - {self.amount} ({self.status})"

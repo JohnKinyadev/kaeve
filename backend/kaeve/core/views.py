@@ -457,7 +457,13 @@ class LoanViewSet(RoleScopedModelViewSet):
 
     @transaction.atomic
     def perform_create(self, serializer):
-        loan = serializer.save()
+        save_kwargs = {"status": Loan.Status.PENDING}
+        if get_user_role(self.request.user) == MEMBER_ROLE:
+            member = getattr(self.request.user, "member_profile", None)
+            if member is None:
+                raise ValidationError({"detail": "Complete your member profile before applying for a loan."})
+            save_kwargs["member"] = member
+        loan = serializer.save(**save_kwargs)
         sync_loan_ledger_entry(loan)
 
     @transaction.atomic
@@ -478,6 +484,42 @@ class LoanViewSet(RoleScopedModelViewSet):
             raise ValidationError({"detail": "Only admins and managers can reject loans."})
         loan = reject_loan(self.get_object(), request.user)
         return Response(self.get_serializer(loan).data)
+
+    @action(detail=False, methods=["post"])
+    @transaction.atomic
+    def apply(self, request):
+        if get_user_role(request.user) != MEMBER_ROLE:
+            raise ValidationError({"detail": "Only members can use this loan application endpoint."})
+
+        member = getattr(request.user, "member_profile", None)
+        if member is None:
+            raise ValidationError({"detail": "Complete your member profile before applying for a loan."})
+
+        season = Season.objects.filter(is_active=True, is_closed=False).first()
+        if season is None:
+            raise ValidationError({"detail": "No active season is available for loan applications."})
+
+        serializer = self.get_serializer(
+            data={
+                "member": member.id,
+                "season": season.id,
+                "loan_type": request.data.get("loan_type", Loan.LoanType.CHERRY_ADVANCE),
+                "proof_type": request.data.get("proof_type", Loan.ProofType.DELIVERY_HISTORY),
+                "amount": request.data.get("amount"),
+                "expected_production_kg": request.data.get("expected_production_kg") or 0,
+                "rate_per_kg": request.data.get("rate_per_kg") or 50,
+                "savings_amount": request.data.get("savings_amount") or 0,
+                "interest_rate_percent": request.data.get("interest_rate_percent") or 5,
+                "term_months": request.data.get("term_months") or 6,
+                "reason": request.data.get("reason", ""),
+                "guarantor_details": request.data.get("guarantor_details", ""),
+                "collateral_details": request.data.get("collateral_details", ""),
+            }
+        )
+        serializer.is_valid(raise_exception=True)
+        loan = serializer.save(member=member, season=season, status=Loan.Status.PENDING)
+        sync_loan_ledger_entry(loan)
+        return Response(self.get_serializer(loan).data, status=201)
 
 
 class SaleProceedViewSet(RoleScopedModelViewSet):

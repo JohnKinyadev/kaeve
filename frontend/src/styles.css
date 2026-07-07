@@ -381,13 +381,28 @@ a {
 }
 
 input,
-select {
+select,
+textarea {
   background: #fff;
   border: 1px solid #d1d5db;
   border-radius: 8px;
   color: #111827;
-  min-height: 42px;
   padding: 0 12px;
+}
+
+input,
+select {
+  min-height: 42px;
+}
+
+textarea {
+  min-height: 96px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.field-wide {
+  grid-column: 1 / -1;
 }
 
 .field span {
@@ -703,6 +718,15 @@ th {
 
 .member-tabs {
   margin-bottom: 16px;
+}
+
+.member-overview-stack {
+  display: grid;
+  gap: 28px;
+}
+
+.member-loan-panel {
+  max-width: 780px;
 }
 
 .modal-backdrop {

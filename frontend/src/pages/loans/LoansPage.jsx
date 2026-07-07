@@ -14,19 +14,36 @@ import { formatCurrency, formatDate } from "../../utils/formatters";
 import { getResults, toQueryString } from "../../utils/helpers";
 
 const statusTabs = ["pending", "approved", "rejected"];
+const productionLoanTypes = new Set(["cherry_advance", "input_advance"]);
+const emptyLoanForm = {
+  member: "",
+  season: "",
+  loan_type: "cherry_advance",
+  proof_type: "delivery_history",
+  amount: "",
+  expected_production_kg: "",
+  rate_per_kg: "50",
+  savings_amount: "",
+  interest_rate_percent: "5",
+  term_months: "6",
+  reason: "",
+  guarantor_details: "",
+  collateral_details: "",
+};
 
 export function LoansPage() {
   const { role } = useAuth();
   const [status, setStatus] = useState("pending");
   const [action, setAction] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ member: "", season: "", amount: "", reason: "" });
+  const [form, setForm] = useState(emptyLoanForm);
   const [message, setMessage] = useState("");
   const loans = useApiResource(`/api/loans/${toQueryString({ status })}`);
   const members = useApiResource("/api/members/");
   const seasons = useApiResource("/api/seasons/?is_active=true&is_closed=false");
   const canReview = [ROLES.ADMIN, ROLES.MANAGER].includes(role);
   const canApply = [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY].includes(role);
+  const isProductionLoan = productionLoanTypes.has(form.loan_type);
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -37,7 +54,7 @@ export function LoansPage() {
     setMessage("");
     try {
       await apiClient.post("/api/loans/", form);
-      setForm({ member: "", season: "", amount: "", reason: "" });
+      setForm(emptyLoanForm);
       setShowForm(false);
       setStatus("pending");
       await loans.reload();
@@ -109,8 +126,44 @@ export function LoansPage() {
                 ))}
               </select>
             </label>
+            <label className="field">
+              <span>Loan type</span>
+              <select value={form.loan_type} onChange={(event) => updateForm("loan_type", event.target.value)}>
+                <option value="cherry_advance">Cherry advance</option>
+                <option value="input_advance">Farm input advance</option>
+                <option value="development">Development loan</option>
+                <option value="school_fees">School fees loan</option>
+                <option value="emergency">Emergency loan</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Proof basis</span>
+              <select value={form.proof_type} onChange={(event) => updateForm("proof_type", event.target.value)}>
+                <option value="delivery_history">Recent delivery schedule</option>
+                <option value="farm_acreage">Farm acreage</option>
+                <option value="historical_yield">Historical yield</option>
+                <option value="savings">Savings or shares</option>
+              </select>
+            </label>
             <Input label="Amount" type="number" step="0.01" value={form.amount} onChange={(event) => updateForm("amount", event.target.value)} required />
+            <Input
+              label={isProductionLoan ? "Expected production kg" : "Savings or shares amount"}
+              type="number"
+              step="0.01"
+              value={isProductionLoan ? form.expected_production_kg : form.savings_amount}
+              onChange={(event) => updateForm(isProductionLoan ? "expected_production_kg" : "savings_amount", event.target.value)}
+            />
+            {isProductionLoan && <Input label="Advance rate per kg" type="number" min="40" max="60" step="0.01" value={form.rate_per_kg} onChange={(event) => updateForm("rate_per_kg", event.target.value)} />}
+            <Input label="Interest rate percent" type="number" min="5" max="7.5" step="0.1" value={form.interest_rate_percent} onChange={(event) => updateForm("interest_rate_percent", event.target.value)} required />
+            <Input label="Term months" type="number" min="1" max="36" step="1" value={form.term_months} onChange={(event) => updateForm("term_months", event.target.value)} required />
             <Input label="Reason" value={form.reason} onChange={(event) => updateForm("reason", event.target.value)} />
+            <label className="field field-wide">
+              <span>{isProductionLoan ? "Crop lien / collateral details" : "Guarantor details"}</span>
+              <textarea
+                value={isProductionLoan ? form.collateral_details : form.guarantor_details}
+                onChange={(event) => updateForm(isProductionLoan ? "collateral_details" : "guarantor_details", event.target.value)}
+              />
+            </label>
             <div className="form-actions">
               <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
               <Button type="submit">Record Application</Button>
@@ -123,7 +176,10 @@ export function LoansPage() {
         <Table
           columns={[
             { key: "member_name", label: "Member" },
+            { key: "loan_type", label: "Type", render: (row) => row.loan_type_display || row.loan_type },
             { key: "amount", label: "Amount Requested", render: (row) => formatCurrency(Number(row.amount || 0)) },
+            { key: "eligible_amount", label: "Eligible", render: (row) => formatCurrency(Number(row.eligible_amount || 0)) },
+            { key: "recovery_amount", label: "Recovery", render: (row) => formatCurrency(Number(row.recovery_amount || 0)) },
             { key: "requested_on", label: "Date", render: (row) => formatDate(row.requested_on) },
             { key: "status", label: "Status", render: (row) => <Badge tone={row.status === "approved" ? "success" : row.status === "rejected" ? "neutral" : "warning"}>{row.status_display || row.status}</Badge> },
           ]}

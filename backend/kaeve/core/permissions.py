@@ -85,8 +85,9 @@ class RoleBasedAdminMixin:
         },
         MEMBER_ROLE: {
             "member": {"view"},
+            "season": {"view"},
             "delivery": {"view"},
-            "loan": {"view"},
+            "loan": {"view", "add"},
             "payout": {"view"},
             "ledgerentry": {"view"},
         },
@@ -158,8 +159,9 @@ class RoleBasedApiPermission(BasePermission):
         },
         MEMBER_ROLE: {
             "member": {"view"},
+            "season": {"view"},
             "delivery": {"view"},
-            "loan": {"view"},
+            "loan": {"view", "add"},
             "payout": {"view"},
             "ledgerentry": {"view"},
         },
@@ -174,6 +176,7 @@ class RoleBasedApiPermission(BasePermission):
         "destroy": "delete",
         "approve": "change",
         "reject": "change",
+        "apply": "add",
     }
 
     def has_permission(self, request, view):
