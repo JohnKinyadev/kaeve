@@ -226,6 +226,32 @@ class InventoryStock(TimeStampedModel):
         return f"{self.get_stock_type_display()} - {self.quantity_kg} kg"
 
 
+class LoanPolicy(TimeStampedModel):
+    name = models.CharField(max_length=120, default="Default loan policy")
+    is_active = models.BooleanField(default=True)
+    applications_open = models.BooleanField(default=True)
+    advance_rate_per_kg = models.DecimalField(max_digits=8, decimal_places=2, default=50)
+    interest_rate_percent = models.DecimalField(max_digits=5, decimal_places=2, default=5)
+    future_harvest_cap_percent = models.DecimalField(max_digits=5, decimal_places=2, default=60)
+    max_unsecured_guarantor_loan = models.DecimalField(max_digits=12, decimal_places=2, default=1000000)
+
+    class Meta:
+        ordering = ["-is_active", "-updated_at"]
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        if self.advance_rate_per_kg <= 0:
+            raise ValidationError("Advance rate per kg must be greater than zero.")
+        if self.interest_rate_percent < Decimal("5.00") or self.interest_rate_percent > Decimal("7.50"):
+            raise ValidationError("Interest rate must be between 5% and 7.5%.")
+        if self.future_harvest_cap_percent <= 0 or self.future_harvest_cap_percent > 100:
+            raise ValidationError("Future harvest cap must be between 1% and 100%.")
+        if self.max_unsecured_guarantor_loan <= 0:
+            raise ValidationError("Maximum guarantor-backed loan must be greater than zero.")
+
+
 class Loan(TimeStampedModel):
     class LoanType(models.TextChoices):
         CHERRY_ADVANCE = "cherry_advance", "Cherry Advance"
@@ -240,6 +266,10 @@ class Loan(TimeStampedModel):
         HISTORICAL_YIELD = "historical_yield", "Historical Yield"
         SAVINGS = "savings", "Savings or Shares"
 
+    class CollateralType(models.TextChoices):
+        FUTURE_HARVEST = "future_harvest", "Future Harvest / Crop Lien"
+        GUARANTOR = "guarantor", "Member Guarantor"
+
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         APPROVED = "approved", "Approved"
@@ -250,6 +280,18 @@ class Loan(TimeStampedModel):
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="loans")
     loan_type = models.CharField(max_length=30, choices=LoanType.choices, default=LoanType.CHERRY_ADVANCE)
     proof_type = models.CharField(max_length=30, choices=ProofType.choices, default=ProofType.DELIVERY_HISTORY)
+    collateral_type = models.CharField(
+        max_length=30,
+        choices=CollateralType.choices,
+        default=CollateralType.FUTURE_HARVEST,
+    )
+    guarantor = models.ForeignKey(
+        Member,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="guaranteed_loans",
+    )
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     eligible_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     expected_production_kg = models.DecimalField(max_digits=12, decimal_places=2, default=0)

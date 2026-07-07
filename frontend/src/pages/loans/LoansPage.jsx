@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { apiClient } from "../../api/axiosInstance";
 import { loansAPI } from "../../api/loansAPI";
@@ -14,17 +14,15 @@ import { formatCurrency, formatDate } from "../../utils/formatters";
 import { getResults, toQueryString } from "../../utils/helpers";
 
 const statusTabs = ["pending", "approved", "rejected"];
-const productionLoanTypes = new Set(["cherry_advance", "input_advance"]);
 const emptyLoanForm = {
   member: "",
-  season: "",
   loan_type: "cherry_advance",
   proof_type: "delivery_history",
+  collateral_type: "future_harvest",
+  guarantor: "",
   amount: "",
   expected_production_kg: "",
-  rate_per_kg: "50",
   savings_amount: "",
-  interest_rate_percent: "5",
   term_months: "6",
   reason: "",
   guarantor_details: "",
@@ -37,16 +35,48 @@ export function LoansPage() {
   const [action, setAction] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyLoanForm);
+  const [policy, setPolicy] = useState(null);
+  const [policyForm, setPolicyForm] = useState(null);
   const [message, setMessage] = useState("");
   const loans = useApiResource(`/api/loans/${toQueryString({ status })}`);
   const members = useApiResource("/api/members/");
-  const seasons = useApiResource("/api/seasons/?is_active=true&is_closed=false");
   const canReview = [ROLES.ADMIN, ROLES.MANAGER].includes(role);
   const canApply = [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY].includes(role);
-  const isProductionLoan = productionLoanTypes.has(form.loan_type);
+  const usesFutureHarvest = form.collateral_type === "future_harvest";
+
+  useEffect(() => {
+    let isMounted = true;
+    loansAPI.currentPolicy()
+      .then((data) => {
+        if (!isMounted) return;
+        setPolicy(data);
+        setPolicyForm(data);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updatePolicy(field, value) {
+    setPolicyForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function savePolicy(event) {
+    event.preventDefault();
+    setMessage("");
+    try {
+      const nextPolicy = await apiClient.patch(`/api/loan-policies/${policy.id}/`, policyForm);
+      setPolicy(nextPolicy);
+      setPolicyForm(nextPolicy);
+      setMessage("Loan policy updated.");
+    } catch (err) {
+      setMessage(err.message || "Unable to update loan policy.");
+    }
   }
 
   async function submitLoan(event) {
@@ -81,7 +111,7 @@ export function LoansPage() {
 
   return (
     <div className="page-stack">
-      {(loans.error || members.error || seasons.error) && <div className="form-error">{loans.error || members.error || seasons.error}</div>}
+      {(loans.error || members.error) && <div className="form-error">{loans.error || members.error}</div>}
       {message && <div className={message.includes("Unable") ? "form-error" : "form-success"}>{message}</div>}
 
       <section className="toolbar">
@@ -94,6 +124,30 @@ export function LoansPage() {
         </div>
         {canApply && <Button onClick={() => setShowForm((value) => !value)}>Apply for Loan</Button>}
       </section>
+
+      {role === ROLES.ADMIN && policyForm && (
+        <article className="panel form-panel">
+          <div className="panel-header">
+            <div>
+              <h2>Loan Policy</h2>
+              <span>Rates set here appear read-only on member applications</span>
+            </div>
+          </div>
+          <form className="form-grid" onSubmit={savePolicy}>
+            <Input label="Advance rate per kg" type="number" step="0.01" value={policyForm.advance_rate_per_kg} onChange={(event) => updatePolicy("advance_rate_per_kg", event.target.value)} required />
+            <Input label="Interest rate percent" type="number" min="5" max="7.5" step="0.1" value={policyForm.interest_rate_percent} onChange={(event) => updatePolicy("interest_rate_percent", event.target.value)} required />
+            <Input label="Future harvest cap percent" type="number" min="1" max="100" step="0.1" value={policyForm.future_harvest_cap_percent} onChange={(event) => updatePolicy("future_harvest_cap_percent", event.target.value)} required />
+            <Input label="Max guarantor-backed loan" type="number" step="0.01" value={policyForm.max_unsecured_guarantor_loan} onChange={(event) => updatePolicy("max_unsecured_guarantor_loan", event.target.value)} required />
+            <label className="inline-select">
+              <input type="checkbox" checked={Boolean(policyForm.applications_open)} onChange={(event) => updatePolicy("applications_open", event.target.checked)} />
+              <span>Applications open</span>
+            </label>
+            <div className="form-actions">
+              <Button type="submit">Save Policy</Button>
+            </div>
+          </form>
+        </article>
+      )}
 
       {showForm && (
         <article className="panel form-panel">
@@ -116,17 +170,6 @@ export function LoansPage() {
               </select>
             </label>
             <label className="field">
-              <span>Season</span>
-              <select value={form.season} onChange={(event) => updateForm("season", event.target.value)} required>
-                <option value="">Select season</option>
-                {getResults(seasons.data).map((season) => (
-                  <option key={season.id} value={season.id}>
-                    {season.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
               <span>Loan type</span>
               <select value={form.loan_type} onChange={(event) => updateForm("loan_type", event.target.value)}>
                 <option value="cherry_advance">Cherry advance</option>
@@ -137,33 +180,53 @@ export function LoansPage() {
               </select>
             </label>
             <label className="field">
-              <span>Proof basis</span>
-              <select value={form.proof_type} onChange={(event) => updateForm("proof_type", event.target.value)}>
-                <option value="delivery_history">Recent delivery schedule</option>
-                <option value="farm_acreage">Farm acreage</option>
-                <option value="historical_yield">Historical yield</option>
-                <option value="savings">Savings or shares</option>
+              <span>Collateral category</span>
+              <select value={form.collateral_type} onChange={(event) => updateForm("collateral_type", event.target.value)}>
+                <option value="future_harvest">Future harvest / crop lien</option>
+                <option value="guarantor">Member guarantor</option>
               </select>
             </label>
+            {policy && (
+              <div className="loan-policy-summary field-wide">
+                <span>Advance rate: {formatCurrency(Number(policy.advance_rate_per_kg || 0))}/kg</span>
+                <span>Interest: {policy.interest_rate_percent}%</span>
+                <span>Harvest cap: {policy.future_harvest_cap_percent}%</span>
+              </div>
+            )}
             <Input label="Amount" type="number" step="0.01" value={form.amount} onChange={(event) => updateForm("amount", event.target.value)} required />
-            <Input
-              label={isProductionLoan ? "Expected production kg" : "Savings or shares amount"}
-              type="number"
-              step="0.01"
-              value={isProductionLoan ? form.expected_production_kg : form.savings_amount}
-              onChange={(event) => updateForm(isProductionLoan ? "expected_production_kg" : "savings_amount", event.target.value)}
-            />
-            {isProductionLoan && <Input label="Advance rate per kg" type="number" min="40" max="60" step="0.01" value={form.rate_per_kg} onChange={(event) => updateForm("rate_per_kg", event.target.value)} />}
-            <Input label="Interest rate percent" type="number" min="5" max="7.5" step="0.1" value={form.interest_rate_percent} onChange={(event) => updateForm("interest_rate_percent", event.target.value)} required />
+            {!usesFutureHarvest && (
+              <>
+                <Input
+                  label="Savings or shares amount"
+                  type="number"
+                  step="0.01"
+                  value={form.savings_amount}
+                  onChange={(event) => updateForm("savings_amount", event.target.value)}
+                  required
+                />
+                <label className="field">
+                  <span>Guarantor</span>
+                  <select value={form.guarantor} onChange={(event) => updateForm("guarantor", event.target.value)} required>
+                    <option value="">Select guarantor</option>
+                    {getResults(members.data)
+                      .filter((member) => String(member.id) !== String(form.member))
+                      .map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.membership_number} - {member.full_name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </>
+            )}
             <Input label="Term months" type="number" min="1" max="36" step="1" value={form.term_months} onChange={(event) => updateForm("term_months", event.target.value)} required />
             <Input label="Reason" value={form.reason} onChange={(event) => updateForm("reason", event.target.value)} />
-            <label className="field field-wide">
-              <span>{isProductionLoan ? "Crop lien / collateral details" : "Guarantor details"}</span>
-              <textarea
-                value={isProductionLoan ? form.collateral_details : form.guarantor_details}
-                onChange={(event) => updateForm(isProductionLoan ? "collateral_details" : "guarantor_details", event.target.value)}
-              />
-            </label>
+            {usesFutureHarvest && (
+              <label className="field field-wide">
+                <span>Crop lien notes</span>
+                <textarea value={form.collateral_details} onChange={(event) => updateForm("collateral_details", event.target.value)} />
+              </label>
+            )}
             <div className="form-actions">
               <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
               <Button type="submit">Record Application</Button>

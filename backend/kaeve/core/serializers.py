@@ -11,6 +11,7 @@ from .models import (
     InventoryStock,
     LedgerEntry,
     Loan,
+    LoanPolicy,
     Member,
     MillingBatch,
     Payout,
@@ -22,7 +23,8 @@ from .services import (
     MAX_SUPPORTIVE_INTEREST_RATE,
     MIN_SUPPORTIVE_INTEREST_RATE,
     calculate_loan_eligibility,
-    clamp_cherry_rate,
+    get_active_loan_policy,
+    member_last_12_month_delivery_kg,
     get_approved_loan_recovery_total,
 )
 
@@ -66,6 +68,24 @@ class UserProfileSerializer(CleanModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "username", "email", "created_at", "updated_at"]
+
+
+class LoanPolicySerializer(CleanModelSerializer):
+    class Meta:
+        model = LoanPolicy
+        fields = [
+            "id",
+            "name",
+            "is_active",
+            "applications_open",
+            "advance_rate_per_kg",
+            "interest_rate_percent",
+            "future_harvest_cap_percent",
+            "max_unsecured_guarantor_loan",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class AuthTokenSerializer(serializers.ModelSerializer):
@@ -319,6 +339,10 @@ class LoanSerializer(CleanModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     loan_type_display = serializers.CharField(source="get_loan_type_display", read_only=True)
     proof_type_display = serializers.CharField(source="get_proof_type_display", read_only=True)
+    collateral_type_display = serializers.CharField(source="get_collateral_type_display", read_only=True)
+    guarantor_name = serializers.CharField(source="guarantor.full_name", read_only=True)
+    guarantor_membership_number = serializers.CharField(source="guarantor.membership_number", read_only=True)
+    last_12_month_delivery_kg = serializers.SerializerMethodField()
     estimated_interest = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     recovery_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
 
@@ -335,8 +359,14 @@ class LoanSerializer(CleanModelSerializer):
             "loan_type_display",
             "proof_type",
             "proof_type_display",
+            "collateral_type",
+            "collateral_type_display",
+            "guarantor",
+            "guarantor_name",
+            "guarantor_membership_number",
             "amount",
             "eligible_amount",
+            "last_12_month_delivery_kg",
             "expected_production_kg",
             "rate_per_kg",
             "savings_amount",
@@ -363,7 +393,13 @@ class LoanSerializer(CleanModelSerializer):
             "season_name",
             "loan_type_display",
             "proof_type_display",
+            "collateral_type_display",
+            "guarantor_name",
+            "guarantor_membership_number",
             "eligible_amount",
+            "last_12_month_delivery_kg",
+            "rate_per_kg",
+            "interest_rate_percent",
             "estimated_interest",
             "recovery_amount",
             "status_display",
@@ -372,6 +408,88 @@ class LoanSerializer(CleanModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_last_12_month_delivery_kg(self, obj):
+        return str(member_last_12_month_delivery_kg(obj.member))
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        member = attrs.get("member") or getattr(self.instance, "member", None)
+        season = attrs.get("season") or getattr(self.instance, "season", None)
+        loan_type = attrs.get("loan_type", getattr(self.instance, "loan_type", Loan.LoanType.CHERRY_ADVANCE))
+        proof_type = attrs.get("proof_type", getattr(self.instance, "proof_type", Loan.ProofType.DELIVERY_HISTORY))
+        collateral_type = attrs.get(
+            "collateral_type",
+            getattr(self.instance, "collateral_type", Loan.CollateralType.FUTURE_HARVEST),
+        )
+        guarantor = attrs.get("guarantor", getattr(self.instance, "guarantor", None))
+        savings_amount = attrs.get("savings_amount", getattr(self.instance, "savings_amount", 0))
+        expected_production_kg = attrs.get(
+            "expected_production_kg",
+            getattr(self.instance, "expected_production_kg", 0),
+        )
+        amount = attrs.get("amount", getattr(self.instance, "amount", None))
+        policy = get_active_loan_policy()
+
+        if not policy.applications_open:
+            raise serializers.ValidationError({"detail": "Loan applications are currently closed."})
+
+        attrs["rate_per_kg"] = policy.advance_rate_per_kg
+        attrs["interest_rate_percent"] = policy.interest_rate_percent
+
+        if policy.interest_rate_percent < MIN_SUPPORTIVE_INTEREST_RATE or policy.interest_rate_percent > MAX_SUPPORTIVE_INTEREST_RATE:
+            raise serializers.ValidationError(
+                {
+                    "interest_rate_percent": (
+                        f"Configured interest rate must be between {MIN_SUPPORTIVE_INTEREST_RATE}% "
+                        f"and {MAX_SUPPORTIVE_INTEREST_RATE}%."
+                    )
+                }
+            )
+
+        if collateral_type == Loan.CollateralType.FUTURE_HARVEST:
+            last_12_month_kg = member_last_12_month_delivery_kg(member) if member else Decimal("0")
+            if last_12_month_kg <= 0:
+                raise serializers.ValidationError(
+                    {"collateral_type": "Future harvest loans require delivery history in the last 12 months."}
+                )
+            attrs["guarantor"] = None
+            attrs["savings_amount"] = Decimal("0.00")
+            attrs["collateral_details"] = (
+                attrs.get("collateral_details")
+                or "Crop lien on future coffee harvest and automatic recovery from payout."
+            )
+        else:
+            if guarantor is None:
+                raise serializers.ValidationError({"guarantor": "Select an existing cooperative member as guarantor."})
+            if member and guarantor.id == member.id:
+                raise serializers.ValidationError({"guarantor": "A member cannot guarantee their own loan."})
+            if Decimal(savings_amount or 0) <= 0:
+                raise serializers.ValidationError({"savings_amount": "Savings amount is required for guarantor loans."})
+            attrs["guarantor_details"] = (
+                attrs.get("guarantor_details")
+                or f"{guarantor.membership_number} - {guarantor.full_name}"
+            )
+
+        if member and season:
+            eligible_amount = calculate_loan_eligibility(
+                member=member,
+                season=season,
+                loan_type=loan_type,
+                proof_type=proof_type,
+                expected_production_kg=expected_production_kg,
+                rate_per_kg=policy.advance_rate_per_kg,
+                savings_amount=savings_amount,
+                collateral_type=collateral_type,
+                policy=policy,
+            )
+            attrs["eligible_amount"] = eligible_amount
+            if amount is not None and Decimal(amount) > eligible_amount:
+                raise serializers.ValidationError(
+                    {"amount": f"Requested amount exceeds eligible limit of Ksh {eligible_amount}."}
+                )
+
+        return attrs
 
 
 class SaleProceedSerializer(CleanModelSerializer):
@@ -433,59 +551,6 @@ class PayoutSerializer(CleanModelSerializer):
             "created_at",
             "updated_at",
         ]
-
-    def validate(self, attrs):
-        attrs = super().validate(attrs)
-        member = attrs.get("member") or getattr(self.instance, "member", None)
-        season = attrs.get("season") or getattr(self.instance, "season", None)
-        loan_type = attrs.get("loan_type", getattr(self.instance, "loan_type", Loan.LoanType.CHERRY_ADVANCE))
-        proof_type = attrs.get("proof_type", getattr(self.instance, "proof_type", Loan.ProofType.DELIVERY_HISTORY))
-        rate_per_kg = attrs.get("rate_per_kg", getattr(self.instance, "rate_per_kg", 50))
-        savings_amount = attrs.get("savings_amount", getattr(self.instance, "savings_amount", 0))
-        expected_production_kg = attrs.get(
-            "expected_production_kg",
-            getattr(self.instance, "expected_production_kg", 0),
-        )
-        amount = attrs.get("amount", getattr(self.instance, "amount", None))
-        interest_rate = Decimal(attrs.get("interest_rate_percent", getattr(self.instance, "interest_rate_percent", 5)))
-
-        if interest_rate < MIN_SUPPORTIVE_INTEREST_RATE or interest_rate > MAX_SUPPORTIVE_INTEREST_RATE:
-            raise serializers.ValidationError(
-                {
-                    "interest_rate_percent": (
-                        f"Interest rate must be between {MIN_SUPPORTIVE_INTEREST_RATE}% "
-                        f"and {MAX_SUPPORTIVE_INTEREST_RATE}%."
-                    )
-                }
-            )
-
-        attrs["rate_per_kg"] = clamp_cherry_rate(rate_per_kg)
-
-        if loan_type in {Loan.LoanType.DEVELOPMENT, Loan.LoanType.SCHOOL_FEES, Loan.LoanType.EMERGENCY}:
-            if Decimal(savings_amount or 0) <= 0:
-                raise serializers.ValidationError({"savings_amount": "Savings amount is required for Sacco-style loans."})
-            if not (attrs.get("guarantor_details") or getattr(self.instance, "guarantor_details", "")):
-                raise serializers.ValidationError({"guarantor_details": "Guarantor details are required for this loan type."})
-        elif not (attrs.get("collateral_details") or getattr(self.instance, "collateral_details", "")):
-            attrs["collateral_details"] = "Crop lien on member cherry/parchment deliveries."
-
-        if member and season:
-            eligible_amount = calculate_loan_eligibility(
-                member=member,
-                season=season,
-                loan_type=loan_type,
-                proof_type=proof_type,
-                expected_production_kg=expected_production_kg,
-                rate_per_kg=attrs["rate_per_kg"],
-                savings_amount=savings_amount,
-            )
-            attrs["eligible_amount"] = eligible_amount
-            if amount is not None and Decimal(amount) > eligible_amount:
-                raise serializers.ValidationError(
-                    {"amount": f"Requested amount exceeds eligible limit of Ksh {eligible_amount}."}
-                )
-
-        return attrs
 
     def _approved_loan_total(self, member, season):
         return get_approved_loan_recovery_total(member.id, season)

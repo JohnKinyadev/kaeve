@@ -16,8 +16,6 @@ function listResults(response) {
   return response?.results || [];
 }
 
-const productionLoanTypes = new Set(["cherry_advance", "input_advance"]);
-
 export function MemberPortalPage({ initialTab = "overview" }) {
   const { user, logout, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -35,16 +33,20 @@ export function MemberPortalPage({ initialTab = "overview" }) {
   const [loanForm, setLoanForm] = useState({
     loan_type: "cherry_advance",
     proof_type: "delivery_history",
+    collateral_type: "future_harvest",
+    guarantor: "",
     amount: "",
-    expected_production_kg: "",
-    rate_per_kg: "50",
     savings_amount: "",
-    interest_rate_percent: "5",
     term_months: "6",
     reason: "",
     guarantor_details: "",
     collateral_details: "",
   });
+  const [loanPolicy, setLoanPolicy] = useState(null);
+  const [eligibility, setEligibility] = useState(null);
+  const [guarantorQuery, setGuarantorQuery] = useState("");
+  const [guarantorResults, setGuarantorResults] = useState([]);
+  const [guarantorNotice, setGuarantorNotice] = useState("");
   const [loanMessage, setLoanMessage] = useState("");
   const [loanError, setLoanError] = useState("");
   const [profileError, setProfileError] = useState("");
@@ -81,7 +83,9 @@ export function MemberPortalPage({ initialTab = "overview" }) {
 
     try {
       await loansAPI.apply(loanForm);
-      setLoanForm((value) => ({ ...value, amount: "", reason: "", guarantor_details: "", collateral_details: "" }));
+      setLoanForm((value) => ({ ...value, amount: "", reason: "", guarantor: "", guarantor_details: "", collateral_details: "" }));
+      setGuarantorQuery("");
+      setGuarantorResults([]);
       setLoanMessage("Loan application submitted for admin or manager approval.");
       setReloadKey((value) => value + 1);
     } catch (err) {
@@ -90,6 +94,70 @@ export function MemberPortalPage({ initialTab = "overview" }) {
       setIsApplyingLoan(false);
     }
   }
+
+  useEffect(() => {
+    let isMounted = true;
+    loansAPI.currentPolicy()
+      .then((policy) => {
+        if (isMounted) setLoanPolicy(policy);
+      })
+      .catch(() => {
+        if (isMounted) setLoanPolicy(null);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!member) return undefined;
+    let isMounted = true;
+    loansAPI.eligibility({
+      loan_type: loanForm.loan_type,
+      proof_type: loanForm.proof_type,
+      collateral_type: loanForm.collateral_type,
+      savings_amount: loanForm.savings_amount,
+    })
+      .then((data) => {
+        if (isMounted) setEligibility(data);
+      })
+      .catch(() => {
+        if (isMounted) setEligibility(null);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [loanForm.collateral_type, loanForm.loan_type, loanForm.proof_type, loanForm.savings_amount, member, reloadKey]);
+
+  useEffect(() => {
+    if (loanForm.collateral_type !== "guarantor" || guarantorQuery.trim().length < 2) {
+      setGuarantorResults([]);
+      setGuarantorNotice("");
+      return undefined;
+    }
+
+    let isMounted = true;
+    const timer = window.setTimeout(() => {
+      loansAPI.searchGuarantors(guarantorQuery)
+        .then((data) => {
+          if (!isMounted) return;
+          const results = data.results || [];
+          setGuarantorResults(results);
+          setGuarantorNotice(results.length ? "" : "No existing member matches that name or membership number.");
+        })
+        .catch(() => {
+          if (isMounted) {
+            setGuarantorResults([]);
+            setGuarantorNotice("Unable to search guarantors.");
+          }
+        });
+    }, 250);
+
+    return () => {
+      isMounted = false;
+      window.clearTimeout(timer);
+    };
+  }, [guarantorQuery, loanForm.collateral_type]);
 
   useEffect(() => {
     let isMounted = true;
@@ -127,7 +195,9 @@ export function MemberPortalPage({ initialTab = "overview" }) {
   const activeLoan = loans[0];
   const latestPayout = payouts[0];
   const needsProfile = !member;
-  const isProductionLoan = productionLoanTypes.has(loanForm.loan_type);
+  const usesFutureHarvest = loanForm.collateral_type === "future_harvest";
+  const eligibleAmount = Number(eligibility?.eligible_amount || 0);
+  const applicationsClosed = loanPolicy && !loanPolicy.applications_open;
 
   return (
     <main className="portal-screen role-member">
@@ -230,6 +300,15 @@ export function MemberPortalPage({ initialTab = "overview" }) {
             </div>
           ) : (
             <form className="form-grid" onSubmit={handleLoanSubmit}>
+              {loanPolicy && (
+                <div className="loan-policy-summary field-wide">
+                  <span>Advance rate: {formatCurrency(Number(loanPolicy.advance_rate_per_kg || 0))}/kg</span>
+                  <span>Interest: {loanPolicy.interest_rate_percent}%</span>
+                  <span>Harvest cap: {loanPolicy.future_harvest_cap_percent}%</span>
+                  <span>Eligible limit: {formatCurrency(eligibleAmount)}</span>
+                </div>
+              )}
+              {applicationsClosed && <div className="form-error field-wide">Loan applications are currently closed.</div>}
               <label className="field">
                 <span>Loan type</span>
                 <select
@@ -244,15 +323,13 @@ export function MemberPortalPage({ initialTab = "overview" }) {
                 </select>
               </label>
               <label className="field">
-                <span>Proof of production</span>
+                <span>Collateral category</span>
                 <select
-                  value={loanForm.proof_type}
-                  onChange={(event) => setLoanForm((value) => ({ ...value, proof_type: event.target.value }))}
+                  value={loanForm.collateral_type}
+                  onChange={(event) => setLoanForm((value) => ({ ...value, collateral_type: event.target.value, guarantor: "" }))}
                 >
-                  <option value="delivery_history">Recent delivery schedule</option>
-                  <option value="farm_acreage">Farm acreage</option>
-                  <option value="historical_yield">Historical yield</option>
-                  <option value="savings">Savings or shares</option>
+                  <option value="future_harvest">Future harvest / crop lien</option>
+                  <option value="guarantor">Member guarantor</option>
                 </select>
               </label>
               <Input
@@ -264,41 +341,49 @@ export function MemberPortalPage({ initialTab = "overview" }) {
                 onChange={(event) => setLoanForm((value) => ({ ...value, amount: event.target.value }))}
                 required
               />
-              <Input
-                label={isProductionLoan ? "Expected production kg" : "Savings or shares amount"}
-                type="number"
-                min="0"
-                step="0.01"
-                value={isProductionLoan ? loanForm.expected_production_kg : loanForm.savings_amount}
-                onChange={(event) =>
-                  setLoanForm((value) =>
-                    isProductionLoan
-                      ? { ...value, expected_production_kg: event.target.value }
-                      : { ...value, savings_amount: event.target.value, proof_type: "savings" },
-                  )
-                }
-              />
-              {isProductionLoan && (
-                <Input
-                  label="Advance rate per kg"
-                  type="number"
-                  min="40"
-                  max="60"
-                  step="0.01"
-                  value={loanForm.rate_per_kg}
-                  onChange={(event) => setLoanForm((value) => ({ ...value, rate_per_kg: event.target.value }))}
-                />
+              {usesFutureHarvest ? (
+                <div className="loan-policy-note field-wide">
+                  <strong>Future harvest collateral</strong>
+                  <span>
+                    Last 12 months deliveries: {formatKg(Number(eligibility?.last_12_month_delivery_kg || 0))}.
+                    Your limit is based on this harvest record, the admin-set advance rate, and the configured cap.
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    label="Savings or shares amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={loanForm.savings_amount}
+                    onChange={(event) => setLoanForm((value) => ({ ...value, savings_amount: event.target.value, proof_type: "savings" }))}
+                    required
+                  />
+                  <label className="field">
+                    <span>Search guarantor</span>
+                    <input value={guarantorQuery} onChange={(event) => setGuarantorQuery(event.target.value)} placeholder="Type member name or number" />
+                  </label>
+                  {guarantorResults.length > 0 && (
+                    <div className="guarantor-results field-wide">
+                      {guarantorResults.map((guarantor) => (
+                        <button
+                          className={loanForm.guarantor === String(guarantor.id) ? "active" : ""}
+                          key={guarantor.id}
+                          type="button"
+                          onClick={() => {
+                            setLoanForm((value) => ({ ...value, guarantor: String(guarantor.id), guarantor_details: `${guarantor.membership_number} - ${guarantor.full_name}` }));
+                            setGuarantorQuery(`${guarantor.membership_number} - ${guarantor.full_name}`);
+                          }}
+                        >
+                          {guarantor.membership_number} - {guarantor.full_name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {guarantorNotice && <div className="form-error field-wide">{guarantorNotice}</div>}
+                </>
               )}
-              <Input
-                label="Interest rate percent"
-                type="number"
-                min="5"
-                max="7.5"
-                step="0.1"
-                value={loanForm.interest_rate_percent}
-                onChange={(event) => setLoanForm((value) => ({ ...value, interest_rate_percent: event.target.value }))}
-                required
-              />
               <Input
                 label="Term months"
                 type="number"
@@ -315,25 +400,20 @@ export function MemberPortalPage({ initialTab = "overview" }) {
                 onChange={(event) => setLoanForm((value) => ({ ...value, reason: event.target.value }))}
                 required
               />
-              <label className="field field-wide">
-                <span>{isProductionLoan ? "Crop lien / collateral details" : "Guarantor details"}</span>
-                <textarea
-                  value={isProductionLoan ? loanForm.collateral_details : loanForm.guarantor_details}
-                  onChange={(event) =>
-                    setLoanForm((value) =>
-                      isProductionLoan
-                        ? { ...value, collateral_details: event.target.value }
-                        : { ...value, guarantor_details: event.target.value },
-                    )
-                  }
-                  placeholder={isProductionLoan ? "Coffee crop lien, expected delivery period, or other security" : "Names or membership numbers of guarantors"}
-                  required={!isProductionLoan}
-                />
-              </label>
+              {usesFutureHarvest && (
+                <label className="field field-wide">
+                  <span>Crop lien notes</span>
+                  <textarea
+                    value={loanForm.collateral_details}
+                    onChange={(event) => setLoanForm((value) => ({ ...value, collateral_details: event.target.value }))}
+                    placeholder="Optional notes about expected delivery period or crop lien"
+                  />
+                </label>
+              )}
               {loanError && <div className="form-error">{loanError}</div>}
               {loanMessage && <div className="form-success">{loanMessage}</div>}
               <div className="form-actions">
-                <Button type="submit" disabled={isApplyingLoan}>
+                <Button type="submit" disabled={isApplyingLoan || applicationsClosed || (usesFutureHarvest && eligibleAmount <= 0)}>
                   {isApplyingLoan ? "Submitting..." : "Submit application"}
                 </Button>
               </div>

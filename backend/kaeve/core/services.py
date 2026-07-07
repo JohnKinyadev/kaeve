@@ -2,8 +2,9 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
 from django.db.models import Sum
+from django.utils import timezone
 
-from .models import Delivery, InventoryStock, LedgerEntry, Loan, Payout, SaleProceed
+from .models import Delivery, InventoryStock, LedgerEntry, Loan, LoanPolicy, Payout, SaleProceed
 
 
 MONEY_PLACES = Decimal("0.01")
@@ -20,11 +21,24 @@ def money(value):
     return Decimal(value or 0).quantize(MONEY_PLACES, rounding=ROUND_HALF_UP)
 
 
-def member_delivery_kg(member, season=None):
+def get_active_loan_policy():
+    policy = LoanPolicy.objects.filter(is_active=True).order_by("-updated_at", "-id").first()
+    if policy:
+        return policy
+    return LoanPolicy.objects.create()
+
+
+def member_delivery_kg(member, season=None, since=None):
     deliveries = Delivery.objects.filter(member=member)
     if season:
         deliveries = deliveries.filter(season=season)
+    if since:
+        deliveries = deliveries.filter(delivery_date__gte=since)
     return deliveries.aggregate(total=Sum("weight_kg"))["total"] or Decimal("0")
+
+
+def member_last_12_month_delivery_kg(member):
+    return member_delivery_kg(member, since=timezone.localdate() - timezone.timedelta(days=365))
 
 
 def clamp_interest_rate(rate):
@@ -37,18 +51,30 @@ def clamp_cherry_rate(rate):
     return min(max(rate, MIN_CHERRY_ADVANCE_RATE), MAX_CHERRY_ADVANCE_RATE)
 
 
-def calculate_loan_eligibility(member, season, loan_type, proof_type, expected_production_kg=0, rate_per_kg=0, savings_amount=0):
+def calculate_loan_eligibility(
+    member,
+    season,
+    loan_type,
+    proof_type,
+    expected_production_kg=0,
+    rate_per_kg=0,
+    savings_amount=0,
+    collateral_type=Loan.CollateralType.FUTURE_HARVEST,
+    policy=None,
+):
+    policy = policy or get_active_loan_policy()
     expected_production_kg = Decimal(expected_production_kg or 0)
     savings_amount = Decimal(savings_amount or 0)
-    rate_per_kg = clamp_cherry_rate(rate_per_kg)
+    rate_per_kg = Decimal(rate_per_kg or policy.advance_rate_per_kg)
 
-    if loan_type in {Loan.LoanType.CHERRY_ADVANCE, Loan.LoanType.INPUT_ADVANCE}:
-        delivered_kg = member_delivery_kg(member, season)
-        acreage_estimate = Decimal(member.farm_size_acres or 0) * ESTIMATED_KG_PER_ACRE
-        production_kg = max(delivered_kg, expected_production_kg, acreage_estimate)
-        return money(production_kg * rate_per_kg)
+    if collateral_type == Loan.CollateralType.FUTURE_HARVEST:
+        last_12_month_kg = member_last_12_month_delivery_kg(member)
+        if last_12_month_kg <= 0:
+            return Decimal("0.00")
+        harvest_value = last_12_month_kg * rate_per_kg
+        return money(harvest_value * (Decimal(policy.future_harvest_cap_percent or 0) / Decimal("100")))
 
-    return money(min(savings_amount * Decimal("3"), MAX_UNSECURED_SACCO_LOAN))
+    return money(min(savings_amount * Decimal("3"), Decimal(policy.max_unsecured_guarantor_loan or 0)))
 
 
 def get_season_total_delivery_kg(season):

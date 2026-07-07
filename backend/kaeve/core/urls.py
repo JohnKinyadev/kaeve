@@ -6,6 +6,7 @@ from . import views
 router = DefaultRouter()
 router.register("members", views.MemberViewSet)
 router.register("users", views.UserProfileViewSet)
+router.register("loan-policies", views.LoanPolicyViewSet)
 router.register("collection-points", views.CollectionPointViewSet)
 router.register("seasons", views.SeasonViewSet)
 router.register("deliveries", views.DeliveryViewSet)
@@ -26,6 +27,8 @@ urlpatterns = [
     path("auth/logout/", views.logout, name="logout"),
     path("auth/me/", views.me, name="me"),
     path("auth/complete-member-profile/", views.complete_member_profile, name="complete-member-profile"),
+    path("loan-policy/current/", views.current_loan_policy, name="current-loan-policy"),
+    path("members/guarantor-search/", views.guarantor_search, name="guarantor-search"),
     path("health/", views.health_check, name="health-check"),
     path("dashboard-summary/", views.dashboard_summary, name="dashboard-summary"),
     path("active-collection-points/", views.collection_points, name="active-collection-points"),

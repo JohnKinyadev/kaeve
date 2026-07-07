@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 from django.contrib.auth import get_user_model
 from django.contrib.auth import authenticate
 from django.core import signing
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Count, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
@@ -28,6 +28,7 @@ from .models import (
     InventoryStock,
     LedgerEntry,
     Loan,
+    LoanPolicy,
     Member,
     MillingBatch,
     Payout,
@@ -50,6 +51,7 @@ from .serializers import (
     DeliverySerializer,
     InventoryStockSerializer,
     LedgerEntrySerializer,
+    LoanPolicySerializer,
     LoanSerializer,
     MemberSerializer,
     MillingBatchSerializer,
@@ -61,8 +63,11 @@ from .serializers import (
 )
 from .services import (
     approve_loan,
+    calculate_loan_eligibility,
     generate_season_payouts,
+    get_active_loan_policy,
     get_payout_statement,
+    member_last_12_month_delivery_kg,
     reject_loan,
     reverse_delivery_effects,
     reverse_milling_batch_effects,
@@ -339,6 +344,16 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         user.save(update_fields=["is_staff", "is_superuser"])
 
 
+class LoanPolicyViewSet(viewsets.ModelViewSet):
+    queryset = LoanPolicy.objects.all()
+    serializer_class = LoanPolicySerializer
+    permission_classes = [AdminOnlyPermission]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["name"]
+    ordering_fields = ["name", "is_active", "updated_at"]
+    ordering = ["-is_active", "-updated_at"]
+
+
 class MemberViewSet(RoleScopedModelViewSet):
     queryset = Member.objects.select_related("user").all()
     serializer_class = MemberSerializer
@@ -455,6 +470,18 @@ class LoanViewSet(RoleScopedModelViewSet):
     ordering_fields = ["requested_on", "amount", "status", "created_at"]
     exact_filter_fields = ["member", "season", "status"]
 
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        if not data.get("season"):
+            season = Season.objects.filter(is_active=True, is_closed=False).first()
+            if season is None:
+                raise ValidationError({"detail": "No active season is available for loan applications."})
+            data["season"] = season.id
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(serializer.data, status=201)
+
     @transaction.atomic
     def perform_create(self, serializer):
         save_kwargs = {"status": Loan.Status.PENDING}
@@ -485,6 +512,43 @@ class LoanViewSet(RoleScopedModelViewSet):
         loan = reject_loan(self.get_object(), request.user)
         return Response(self.get_serializer(loan).data)
 
+    @action(detail=False, methods=["get"])
+    def eligibility(self, request):
+        if get_user_role(request.user) != MEMBER_ROLE:
+            raise ValidationError({"detail": "Only members can check member loan eligibility."})
+
+        member = getattr(request.user, "member_profile", None)
+        if member is None:
+            raise ValidationError({"detail": "Complete your member profile before checking loan eligibility."})
+
+        season = Season.objects.filter(is_active=True, is_closed=False).first()
+        if season is None:
+            raise ValidationError({"detail": "No active season is available for loan applications."})
+
+        policy = get_active_loan_policy()
+        collateral_type = request.query_params.get("collateral_type") or Loan.CollateralType.FUTURE_HARVEST
+        savings_amount = request.query_params.get("savings_amount") or 0
+        eligible_amount = calculate_loan_eligibility(
+            member=member,
+            season=season,
+            loan_type=request.query_params.get("loan_type") or Loan.LoanType.CHERRY_ADVANCE,
+            proof_type=request.query_params.get("proof_type") or Loan.ProofType.DELIVERY_HISTORY,
+            savings_amount=savings_amount,
+            collateral_type=collateral_type,
+            policy=policy,
+        )
+        last_12_month_kg = member_last_12_month_delivery_kg(member)
+        return Response(
+            {
+                "eligible_amount": eligible_amount,
+                "last_12_month_delivery_kg": last_12_month_kg,
+                "advance_rate_per_kg": policy.advance_rate_per_kg,
+                "interest_rate_percent": policy.interest_rate_percent,
+                "future_harvest_cap_percent": policy.future_harvest_cap_percent,
+                "applications_open": policy.applications_open,
+            }
+        )
+
     @action(detail=False, methods=["post"])
     @transaction.atomic
     def apply(self, request):
@@ -505,11 +569,11 @@ class LoanViewSet(RoleScopedModelViewSet):
                 "season": season.id,
                 "loan_type": request.data.get("loan_type", Loan.LoanType.CHERRY_ADVANCE),
                 "proof_type": request.data.get("proof_type", Loan.ProofType.DELIVERY_HISTORY),
+                "collateral_type": request.data.get("collateral_type", Loan.CollateralType.FUTURE_HARVEST),
+                "guarantor": request.data.get("guarantor") or None,
                 "amount": request.data.get("amount"),
                 "expected_production_kg": request.data.get("expected_production_kg") or 0,
-                "rate_per_kg": request.data.get("rate_per_kg") or 50,
                 "savings_amount": request.data.get("savings_amount") or 0,
-                "interest_rate_percent": request.data.get("interest_rate_percent") or 5,
                 "term_months": request.data.get("term_months") or 6,
                 "reason": request.data.get("reason", ""),
                 "guarantor_details": request.data.get("guarantor_details", ""),
@@ -770,6 +834,40 @@ def complete_member_profile(request):
     request.user.profile.phone_number = member.phone_number
     request.user.profile.save(update_fields=["phone_number", "updated_at"])
     return JsonResponse(user_payload(request.user), status=201)
+
+
+@role_required(ADMIN_ROLE, MANAGER_ROLE, SECRETARY_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
+def current_loan_policy(request):
+    policy = get_active_loan_policy()
+    return JsonResponse(LoanPolicySerializer(policy).data)
+
+
+@role_required(MEMBER_ROLE)
+def guarantor_search(request):
+    query = (request.GET.get("search") or request.GET.get("q") or "").strip()
+    if len(query) < 2:
+        return JsonResponse({"results": []})
+
+    current_member = getattr(request.user, "member_profile", None)
+    members = Member.objects.filter(status=Member.Status.ACTIVE).exclude(id=getattr(current_member, "id", None))
+    members = members.filter(
+        models.Q(full_name__icontains=query)
+        | models.Q(membership_number__icontains=query)
+        | models.Q(national_id__icontains=query)
+    ).order_by("full_name")[:8]
+    return JsonResponse(
+        {
+            "results": [
+                {
+                    "id": member.id,
+                    "membership_number": member.membership_number,
+                    "full_name": member.full_name,
+                    "location": member.location,
+                }
+                for member in members
+            ]
+        }
+    )
 
 
 @role_required(ADMIN_ROLE, MANAGER_ROLE, SECRETARY_ROLE, FIELD_OFFICER_ROLE)

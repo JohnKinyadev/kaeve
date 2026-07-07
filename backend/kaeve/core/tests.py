@@ -169,6 +169,14 @@ class RoleProtectedApiTests(TestCase):
             season_type=Season.SeasonType.MAIN_CROP,
             start_date=timezone.localdate(),
         )
+        point = CollectionPoint.objects.create(name="Secretary Loan Point", location="Kiambu")
+        Delivery.objects.create(
+            member=member,
+            season=season,
+            collection_point=point,
+            recorded_by=self.field_user,
+            weight_kg=Decimal("30.00"),
+        )
         self.client.login(username="secretary", password="password")
 
         create_response = self.client.post(
@@ -203,6 +211,14 @@ class RoleProtectedApiTests(TestCase):
             season_type=Season.SeasonType.MAIN_CROP,
             start_date=timezone.localdate(),
         )
+        point = CollectionPoint.objects.create(name="Member Loan Point", location="Kiambu")
+        Delivery.objects.create(
+            member=member,
+            season=season,
+            collection_point=point,
+            recorded_by=self.field_user,
+            weight_kg=Decimal("25.00"),
+        )
         self.client.login(username="member", password="password")
 
         apply_response = self.client.post(
@@ -216,6 +232,73 @@ class RoleProtectedApiTests(TestCase):
         self.assertEqual(apply_response.status_code, 201)
         self.assertEqual(loan.status, Loan.Status.PENDING)
         self.assertEqual(approve_response.status_code, 403)
+
+    def test_first_time_member_cannot_apply_with_future_harvest(self):
+        Member.objects.create(
+            user=self.member_user,
+            membership_number="FIRST001",
+            full_name="First Time Member",
+            national_id="FIRST001",
+            farm_size_acres=Decimal("1.50"),
+            location="Kiambu",
+        )
+        Season.objects.create(
+            name="First Time Season",
+            season_type=Season.SeasonType.MAIN_CROP,
+            start_date=timezone.localdate(),
+        )
+        self.client.login(username="member", password="password")
+
+        response = self.client.post(
+            "/api/loans/apply/",
+            json.dumps({"amount": "100.00", "reason": "Inputs", "collateral_type": Loan.CollateralType.FUTURE_HARVEST}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Future harvest loans require delivery history", response.json()["collateral_type"][0])
+
+    def test_member_can_apply_with_existing_guarantor(self):
+        member = Member.objects.create(
+            user=self.member_user,
+            membership_number="GUAR001",
+            full_name="Guarantor Loan Applicant",
+            national_id="GUAR001",
+            farm_size_acres=Decimal("1.50"),
+            location="Kiambu",
+        )
+        guarantor = Member.objects.create(
+            membership_number="GUAR002",
+            full_name="Existing Guarantor",
+            national_id="GUAR002",
+            farm_size_acres=Decimal("2.00"),
+            location="Kiambu",
+        )
+        season = Season.objects.create(
+            name="Guarantor Season",
+            season_type=Season.SeasonType.MAIN_CROP,
+            start_date=timezone.localdate(),
+        )
+        self.client.login(username="member", password="password")
+
+        response = self.client.post(
+            "/api/loans/apply/",
+            json.dumps(
+                {
+                    "amount": "300.00",
+                    "reason": "School fees",
+                    "loan_type": Loan.LoanType.SCHOOL_FEES,
+                    "collateral_type": Loan.CollateralType.GUARANTOR,
+                    "guarantor": guarantor.id,
+                    "savings_amount": "200.00",
+                }
+            ),
+            content_type="application/json",
+        )
+        loan = Loan.objects.get(member=member, season=season)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(loan.guarantor, guarantor)
 
     def test_secretary_can_view_and_create_deliveries(self):
         member = Member.objects.create(
