@@ -38,6 +38,12 @@ class CleanModelSerializer(serializers.ModelSerializer):
         instance = self.instance or self.Meta.model()
 
         for field, value in attrs.items():
+            try:
+                model_field = instance._meta.get_field(field)
+            except Exception:
+                model_field = None
+            if getattr(model_field, "many_to_many", False):
+                continue
             setattr(instance, field, value)
 
         instance.clean()

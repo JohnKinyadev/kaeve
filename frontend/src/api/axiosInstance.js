@@ -61,6 +61,32 @@ async function refreshAccessToken() {
   return refreshingToken;
 }
 
+function stripHtml(value) {
+  return String(value || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractErrorMessage(error, fallback) {
+  if (!error) return fallback;
+  if (typeof error === "string") return stripHtml(error) || fallback;
+  if (Array.isArray(error)) return error.map((item) => extractErrorMessage(item, "")).filter(Boolean).join(" ");
+  if (error.detail) return extractErrorMessage(error.detail, fallback);
+  if (error.message) return extractErrorMessage(error.message, fallback);
+
+  const fieldMessages = Object.entries(error)
+    .map(([field, value]) => {
+      const message = extractErrorMessage(value, "");
+      return message ? `${field}: ${message}` : "";
+    })
+    .filter(Boolean);
+
+  return fieldMessages.join(" ") || fallback;
+}
+
 async function request(path, options = {}, hasRetried = false) {
   const headers = new Headers(options.headers || {});
   headers.set("Content-Type", headers.get("Content-Type") || "application/json");
@@ -90,7 +116,7 @@ async function request(path, options = {}, hasRetried = false) {
     const error = contentType.includes("application/json")
       ? await response.json().catch(() => ({}))
       : { detail: await response.text().catch(() => "") };
-    const message = error.detail || error.message || `Request failed (${response.status})`;
+    const message = extractErrorMessage(error, `Request failed (${response.status})`);
     throw new Error(message);
   }
 

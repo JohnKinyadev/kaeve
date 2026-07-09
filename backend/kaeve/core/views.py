@@ -520,6 +520,11 @@ class FertilizerRequestViewSet(RoleScopedModelViewSet):
 
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
+        if get_user_role(request.user) == MEMBER_ROLE:
+            member = getattr(request.user, "member_profile", None)
+            if member is None:
+                raise ValidationError({"detail": "Complete your member profile before requesting fertilizer."})
+            data["member"] = member.id
         if not data.get("inventory"):
             inventory = FertilizerInventory.objects.filter(is_active=True, quantity_kg__gt=0).first()
             if inventory is None:
