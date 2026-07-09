@@ -37,6 +37,7 @@ const routeTitles = {
   "/deliveries/log": "Log Delivery",
   "/milling": "Milling",
   "/inventory": "Inventory",
+  "/notifications": "Notifications",
   "/announcements": "Announcements",
   "/fertilizer": "Fertilizer",
   "/loans": "Loans",
@@ -77,6 +78,8 @@ function resolveRoute(path, role) {
   if (path === "/signup") return { public: true, element: <SignupPage /> };
   if (path.startsWith("/auth/callback")) return { public: true, element: <AuthCallbackPage /> };
   if (path === "/portal") return { title: "Member Dashboard", roles: [ROLES.MEMBER], element: <MemberPortalPage initialTab="overview" /> };
+  if (path === "/notifications" && role === ROLES.MEMBER) return { title: "Notifications", roles: [ROLES.MEMBER], element: <MemberPortalPage initialTab="announcements" /> };
+  if (path === "/notifications") return { title: "Notifications", roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY, ROLES.FIELD_OFFICER], element: <AnnouncementsPage readOnly /> };
   if (path === "/complete-registration") return { title: "Complete Registration", roles: [ROLES.MEMBER], element: <MemberPortalPage initialTab="complete" /> };
   if (path === "/dashboard" && role === ROLES.MEMBER) return { title: "Member Dashboard", roles: [ROLES.MEMBER], element: <MemberPortalPage initialTab="overview" /> };
   if (path === "/dashboard") return { title: "Dashboard", roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY, ROLES.FIELD_OFFICER], element: <DashboardPage /> };

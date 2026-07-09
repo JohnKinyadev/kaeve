@@ -22,7 +22,7 @@ const emptyForm = {
   is_active: true,
 };
 
-export function AnnouncementsPage() {
+export function AnnouncementsPage({ readOnly = false }) {
   const [announcements, setAnnouncements] = useState([]);
   const [members, setMembers] = useState([]);
   const [form, setForm] = useState(emptyForm);
@@ -101,62 +101,65 @@ export function AnnouncementsPage() {
 
   return (
     <div className="page-stack">
-      <article className="panel form-panel">
-        <div className="panel-header">
-          <div>
-            <h2>Publish announcement</h2>
-            <span>Send cooperative updates to every member or a selected group.</span>
-          </div>
-          <Megaphone size={22} />
-        </div>
-        <form className="form-grid" onSubmit={handleSubmit}>
-          <Input label="Title" value={form.title} onChange={(event) => updateForm("title", event.target.value)} required />
-          <label className="field">
-            <span>Audience</span>
-            <select value={form.audience} onChange={(event) => updateForm("audience", event.target.value)}>
-              <option value="all_members">Everyone</option>
-              <option value="selected_members">Certain members</option>
-            </select>
-          </label>
-          <label className="field field-wide">
-            <span>Message</span>
-            <textarea value={form.body} onChange={(event) => updateForm("body", event.target.value)} required />
-          </label>
-          {form.audience === "selected_members" && (
-            <div className="field field-wide">
-              <span>Select members</span>
-              <input value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} placeholder="Search by name, membership number, or location" />
-              <div className="member-picker">
-                {filteredMembers.map((member) => (
-                  <label className="check-row" key={member.id}>
-                    <input
-                      checked={form.members.map(String).includes(String(member.id))}
-                      onChange={() => toggleMember(member.id)}
-                      type="checkbox"
-                    />
-                    <span>{member.membership_number} - {member.full_name}</span>
-                  </label>
-                ))}
-              </div>
+      {!readOnly && (
+        <article className="panel form-panel">
+          <div className="panel-header">
+            <div>
+              <h2>Publish announcement</h2>
+              <span>Send cooperative updates to every member or a selected group.</span>
             </div>
-          )}
-          {error && <div className="form-error field-wide">{error}</div>}
-          {message && <div className="form-success field-wide">{message}</div>}
-          <div className="form-actions">
-            <Button type="submit" disabled={isSaving}>
-              <Send size={16} /> {isSaving ? "Publishing..." : "Publish"}
-            </Button>
+            <Megaphone size={22} />
           </div>
-        </form>
-      </article>
+          <form className="form-grid" onSubmit={handleSubmit}>
+            <Input label="Title" value={form.title} onChange={(event) => updateForm("title", event.target.value)} required />
+            <label className="field">
+              <span>Audience</span>
+              <select value={form.audience} onChange={(event) => updateForm("audience", event.target.value)}>
+                <option value="all_members">Everyone</option>
+                <option value="selected_members">Certain members</option>
+              </select>
+            </label>
+            <label className="field field-wide">
+              <span>Message</span>
+              <textarea value={form.body} onChange={(event) => updateForm("body", event.target.value)} required />
+            </label>
+            {form.audience === "selected_members" && (
+              <div className="field field-wide">
+                <span>Select members</span>
+                <input value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} placeholder="Search by name, membership number, or location" />
+                <div className="member-picker">
+                  {filteredMembers.map((member) => (
+                    <label className="check-row" key={member.id}>
+                      <input
+                        checked={form.members.map(String).includes(String(member.id))}
+                        onChange={() => toggleMember(member.id)}
+                        type="checkbox"
+                      />
+                      <span>{member.membership_number} - {member.full_name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {error && <div className="form-error field-wide">{error}</div>}
+            {message && <div className="form-success field-wide">{message}</div>}
+            <div className="form-actions">
+              <Button type="submit" disabled={isSaving}>
+                <Send size={16} /> {isSaving ? "Publishing..." : "Publish"}
+              </Button>
+            </div>
+          </form>
+        </article>
+      )}
 
       <article className="panel">
         <div className="panel-header">
           <div>
-            <h2>Recent announcements</h2>
-            <span>Messages visible in member portals.</span>
+            <h2>{readOnly ? "Notifications" : "Recent announcements"}</h2>
+            <span>{readOnly ? "Cooperative updates and member notices." : "Messages visible in member portals."}</span>
           </div>
         </div>
+        {readOnly && error && <div className="form-error">{error}</div>}
         <Table
           columns={[
             { key: "title", label: "Title" },
