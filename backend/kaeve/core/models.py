@@ -226,6 +226,104 @@ class InventoryStock(TimeStampedModel):
         return f"{self.get_stock_type_display()} - {self.quantity_kg} kg"
 
 
+class Announcement(TimeStampedModel):
+    class Audience(models.TextChoices):
+        ALL_MEMBERS = "all_members", "All Members"
+        SELECTED_MEMBERS = "selected_members", "Selected Members"
+
+    title = models.CharField(max_length=160)
+    body = models.TextField()
+    audience = models.CharField(max_length=30, choices=Audience.choices, default=Audience.ALL_MEMBERS)
+    members = models.ManyToManyField(Member, blank=True, related_name="announcements")
+    is_active = models.BooleanField(default=True)
+    published_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="published_announcements",
+    )
+    published_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-published_at", "-created_at"]
+
+    def clean(self):
+        if not self.title.strip():
+            raise ValidationError("Announcement title is required.")
+        if not self.body.strip():
+            raise ValidationError("Announcement message is required.")
+
+    def __str__(self):
+        return self.title
+
+
+class FertilizerInventory(TimeStampedModel):
+    name = models.CharField(max_length=120, default="Factory fertilizer stock")
+    fertilizer_type = models.CharField(max_length=120, default="NPK fertilizer")
+    quantity_kg = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    member_cap_kg = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-is_active", "-updated_at"]
+
+    def clean(self):
+        if self.quantity_kg < 0:
+            raise ValidationError("Fertilizer quantity cannot be negative.")
+        if self.member_cap_kg <= 0:
+            raise ValidationError("Member fertilizer cap must be greater than zero.")
+
+    def __str__(self):
+        return f"{self.name} - {self.quantity_kg} kg"
+
+
+class FertilizerRequest(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    member = models.ForeignKey(Member, on_delete=models.PROTECT, related_name="fertilizer_requests")
+    inventory = models.ForeignKey(
+        FertilizerInventory,
+        on_delete=models.PROTECT,
+        related_name="requests",
+    )
+    requested_kg = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_fertilizer_requests",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(requested_kg__gt=0), name="fertilizer_request_kg_positive"),
+        ]
+
+    def approve(self, reviewed_by):
+        self.status = self.Status.APPROVED
+        self.reviewed_by = reviewed_by
+        self.reviewed_at = timezone.now()
+        self.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+
+    def reject(self, reviewed_by):
+        self.status = self.Status.REJECTED
+        self.reviewed_by = reviewed_by
+        self.reviewed_at = timezone.now()
+        self.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+
+    def __str__(self):
+        return f"{self.member} - {self.requested_kg} kg ({self.status})"
+
+
 class LoanPolicy(TimeStampedModel):
     name = models.CharField(max_length=120, default="Default loan policy")
     is_active = models.BooleanField(default=True)

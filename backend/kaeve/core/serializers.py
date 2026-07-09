@@ -1,13 +1,16 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import models, transaction
 from rest_framework import serializers
 
 from .models import (
+    Announcement,
     AuthToken,
     CollectionPoint,
     Delivery,
+    FertilizerInventory,
+    FertilizerRequest,
     InventoryStock,
     LedgerEntry,
     Loan,
@@ -329,6 +332,151 @@ class InventoryStockSerializer(CleanModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "season_name", "stock_type_display", "created_at", "updated_at"]
+
+
+class AnnouncementSerializer(CleanModelSerializer):
+    audience_display = serializers.CharField(source="get_audience_display", read_only=True)
+    member_names = serializers.SerializerMethodField()
+    published_by_username = serializers.CharField(source="published_by.username", read_only=True)
+
+    class Meta:
+        model = Announcement
+        fields = [
+            "id",
+            "title",
+            "body",
+            "audience",
+            "audience_display",
+            "members",
+            "member_names",
+            "is_active",
+            "published_by",
+            "published_by_username",
+            "published_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "audience_display",
+            "member_names",
+            "published_by",
+            "published_by_username",
+            "published_at",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_member_names(self, obj):
+        return [
+            f"{member.membership_number} - {member.full_name}"
+            for member in obj.members.all()
+        ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        audience = attrs.get("audience", getattr(self.instance, "audience", Announcement.Audience.ALL_MEMBERS))
+        members = attrs.get("members")
+        if audience == Announcement.Audience.SELECTED_MEMBERS:
+            has_existing_members = bool(self.instance and self.instance.members.exists())
+            if members is None and not has_existing_members:
+                raise serializers.ValidationError({"members": "Select at least one member for a targeted announcement."})
+            if members is not None and len(members) == 0:
+                raise serializers.ValidationError({"members": "Select at least one member for a targeted announcement."})
+        return attrs
+
+
+class FertilizerInventorySerializer(CleanModelSerializer):
+    pending_request_kg = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FertilizerInventory
+        fields = [
+            "id",
+            "name",
+            "fertilizer_type",
+            "quantity_kg",
+            "member_cap_kg",
+            "pending_request_kg",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "pending_request_kg", "created_at", "updated_at"]
+
+    def get_pending_request_kg(self, obj):
+        total = obj.requests.filter(status=FertilizerRequest.Status.PENDING).aggregate(total=models.Sum("requested_kg"))[
+            "total"
+        ]
+        return str(total or Decimal("0.00"))
+
+
+class FertilizerRequestSerializer(CleanModelSerializer):
+    member_name = serializers.CharField(source="member.full_name", read_only=True)
+    membership_number = serializers.CharField(source="member.membership_number", read_only=True)
+    inventory_name = serializers.CharField(source="inventory.name", read_only=True)
+    fertilizer_type = serializers.CharField(source="inventory.fertilizer_type", read_only=True)
+    cap_kg = serializers.DecimalField(source="inventory.member_cap_kg", max_digits=10, decimal_places=2, read_only=True)
+    available_kg = serializers.DecimalField(source="inventory.quantity_kg", max_digits=12, decimal_places=2, read_only=True)
+    reviewed_by_username = serializers.CharField(source="reviewed_by.username", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+
+    class Meta:
+        model = FertilizerRequest
+        fields = [
+            "id",
+            "member",
+            "member_name",
+            "membership_number",
+            "inventory",
+            "inventory_name",
+            "fertilizer_type",
+            "requested_kg",
+            "cap_kg",
+            "available_kg",
+            "reason",
+            "status",
+            "status_display",
+            "reviewed_by",
+            "reviewed_by_username",
+            "reviewed_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "member_name",
+            "membership_number",
+            "inventory_name",
+            "fertilizer_type",
+            "cap_kg",
+            "available_kg",
+            "status_display",
+            "reviewed_by",
+            "reviewed_by_username",
+            "reviewed_at",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        inventory = attrs.get("inventory") or getattr(self.instance, "inventory", None)
+        requested_kg = Decimal(attrs.get("requested_kg", getattr(self.instance, "requested_kg", 0)) or 0)
+
+        if inventory is None:
+            raise serializers.ValidationError({"inventory": "Select an active fertilizer inventory."})
+        if not inventory.is_active:
+            raise serializers.ValidationError({"inventory": "This fertilizer stock is not active."})
+        if requested_kg <= 0:
+            raise serializers.ValidationError({"requested_kg": "Requested fertilizer must be greater than zero."})
+        if requested_kg > Decimal(inventory.member_cap_kg or 0):
+            raise serializers.ValidationError(
+                {"requested_kg": f"Requested fertilizer exceeds the member cap of {inventory.member_cap_kg} kg."}
+            )
+        if requested_kg > Decimal(inventory.quantity_kg or 0):
+            raise serializers.ValidationError({"requested_kg": "Requested fertilizer exceeds available factory stock."})
+        return attrs
 
 
 class LoanSerializer(CleanModelSerializer):

@@ -1,4 +1,4 @@
-import { Banknote, BarChart3, Boxes, Factory, Home, Leaf, Scale, UserCog, Users, WalletCards } from "lucide-react";
+import { Banknote, BarChart3, Boxes, Factory, Home, Leaf, Megaphone, Package, Scale, UserCog, Users, WalletCards } from "lucide-react";
 
 import { ROLES } from "../../utils/constants";
 import { classNames } from "../../utils/helpers";
@@ -12,6 +12,8 @@ const navItems = [
   { label: "Deliveries", path: "/deliveries", icon: Scale, roles: [ROLES.ADMIN, ROLES.SECRETARY, ROLES.FIELD_OFFICER] },
   { label: "Milling", path: "/milling", icon: Factory, roles: [ROLES.ADMIN, ROLES.MANAGER] },
   { label: "Inventory", path: "/inventory", icon: Boxes, roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.FIELD_OFFICER] },
+  { label: "Announcements", path: "/announcements", icon: Megaphone, roles: [ROLES.ADMIN, ROLES.MANAGER] },
+  { label: "Fertilizer", path: "/fertilizer", icon: Package, roles: [ROLES.ADMIN, ROLES.MANAGER] },
   { label: "Loans", path: "/loans", icon: Banknote, roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY] },
   { label: "Payouts", path: "/payouts/main-2026", icon: WalletCards, roles: [ROLES.ADMIN, ROLES.MANAGER] },
   { label: "Reports", path: "/reports", icon: BarChart3, roles: [ROLES.ADMIN, ROLES.MANAGER] },

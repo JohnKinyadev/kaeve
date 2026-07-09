@@ -2,9 +2,12 @@ from django.contrib import admin
 
 from .permissions import RoleBasedAdminMixin
 from .models import (
+    Announcement,
     AuthToken,
     CollectionPoint,
     Delivery,
+    FertilizerInventory,
+    FertilizerRequest,
     InventoryStock,
     LedgerEntry,
     Loan,
@@ -67,6 +70,28 @@ class MillingBatchAdmin(RoleBasedAdminMixin, admin.ModelAdmin):
 @admin.register(InventoryStock)
 class InventoryStockAdmin(RoleBasedAdminMixin, admin.ModelAdmin):
     pass
+
+
+@admin.register(Announcement)
+class AnnouncementAdmin(RoleBasedAdminMixin, admin.ModelAdmin):
+    list_display = ("title", "audience", "is_active", "published_by", "published_at")
+    list_filter = ("audience", "is_active", "published_at")
+    search_fields = ("title", "body", "members__full_name", "members__membership_number")
+    filter_horizontal = ("members",)
+
+
+@admin.register(FertilizerInventory)
+class FertilizerInventoryAdmin(RoleBasedAdminMixin, admin.ModelAdmin):
+    list_display = ("name", "fertilizer_type", "quantity_kg", "member_cap_kg", "is_active")
+    list_filter = ("is_active", "fertilizer_type")
+    search_fields = ("name", "fertilizer_type")
+
+
+@admin.register(FertilizerRequest)
+class FertilizerRequestAdmin(RoleBasedAdminMixin, admin.ModelAdmin):
+    list_display = ("member", "inventory", "requested_kg", "status", "reviewed_by", "created_at")
+    list_filter = ("status", "inventory", "created_at")
+    search_fields = ("member__full_name", "member__membership_number", "inventory__name")
 
 
 @admin.register(Loan)

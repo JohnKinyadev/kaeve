@@ -10,6 +10,8 @@ import { LoansPage } from "../pages/loans/LoansPage";
 import { LoginPage } from "../pages/auth/LoginPage";
 import { SignupPage } from "../pages/auth/SignupPage";
 import { AuthCallbackPage } from "../pages/auth/AuthCallbackPage";
+import { AnnouncementsPage } from "../pages/announcements/AnnouncementsPage";
+import { FertilizerPage } from "../pages/fertilizer/FertilizerPage";
 import { MemberDetailPage } from "../pages/members/MemberDetailPage";
 import { MemberFormPage } from "../pages/members/MemberFormPage";
 import { MembersListPage } from "../pages/members/MembersListPage";
@@ -35,6 +37,8 @@ const routeTitles = {
   "/deliveries/log": "Log Delivery",
   "/milling": "Milling",
   "/inventory": "Inventory",
+  "/announcements": "Announcements",
+  "/fertilizer": "Fertilizer",
   "/loans": "Loans",
   "/payouts": "Payouts",
   "/reports": "Reports",
@@ -86,6 +90,8 @@ function resolveRoute(path, role) {
   if (path === "/deliveries/log") return { title: "Log Delivery", roles: [ROLES.ADMIN, ROLES.SECRETARY, ROLES.FIELD_OFFICER], element: <LogDeliveryPage /> };
   if (path === "/milling") return { title: "Milling", roles: [ROLES.ADMIN, ROLES.MANAGER], element: <MillingPage /> };
   if (path === "/inventory") return { title: "Inventory", roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.FIELD_OFFICER], element: <InventoryPage /> };
+  if (path === "/announcements") return { title: "Announcements", roles: [ROLES.ADMIN, ROLES.MANAGER], element: <AnnouncementsPage /> };
+  if (path === "/fertilizer") return { title: "Fertilizer", roles: [ROLES.ADMIN, ROLES.MANAGER], element: <FertilizerPage /> };
   if (path === "/loans") return { title: "Loans", roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY], element: <LoansPage /> };
   if (path.startsWith("/loans/")) return { title: "Loan Detail", roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SECRETARY], element: <LoanDetailPage /> };
   if (path.startsWith("/payouts/statement")) return { title: "Payout Statement", roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.MEMBER], element: <PayoutStatementPage /> };

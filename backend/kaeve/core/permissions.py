@@ -73,6 +73,9 @@ class RoleBasedAdminMixin:
             "delivery": {"view", "add", "change"},
             "loan": {"view"},
             "inventorystock": {"view"},
+            "announcement": {"view"},
+            "fertilizerinventory": {"view"},
+            "fertilizerrequest": {"view"},
         },
         SECRETARY_ROLE: {
             "member": {"view"},
@@ -82,6 +85,9 @@ class RoleBasedAdminMixin:
             "loan": {"view", "add"},
             "payout": {"view"},
             "ledgerentry": {"view"},
+            "announcement": {"view"},
+            "fertilizerinventory": {"view"},
+            "fertilizerrequest": {"view"},
         },
         MEMBER_ROLE: {
             "member": {"view"},
@@ -90,6 +96,9 @@ class RoleBasedAdminMixin:
             "loan": {"view", "add"},
             "payout": {"view"},
             "ledgerentry": {"view"},
+            "announcement": {"view"},
+            "fertilizerinventory": {"view"},
+            "fertilizerrequest": {"view", "add"},
         },
     }
 
@@ -147,6 +156,9 @@ class RoleBasedApiPermission(BasePermission):
             "delivery": {"view", "add", "change"},
             "loan": {"view"},
             "inventorystock": {"view"},
+            "announcement": {"view"},
+            "fertilizerinventory": {"view"},
+            "fertilizerrequest": {"view"},
         },
         SECRETARY_ROLE: {
             "member": {"view"},
@@ -156,6 +168,9 @@ class RoleBasedApiPermission(BasePermission):
             "loan": {"view", "add"},
             "payout": {"view"},
             "ledgerentry": {"view"},
+            "announcement": {"view"},
+            "fertilizerinventory": {"view"},
+            "fertilizerrequest": {"view"},
         },
         MEMBER_ROLE: {
             "member": {"view"},
@@ -164,6 +179,9 @@ class RoleBasedApiPermission(BasePermission):
             "loan": {"view", "add"},
             "payout": {"view"},
             "ledgerentry": {"view"},
+            "announcement": {"view"},
+            "fertilizerinventory": {"view"},
+            "fertilizerrequest": {"view", "add"},
         },
     }
 

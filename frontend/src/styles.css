@@ -512,6 +512,11 @@ th {
   color: #374151;
 }
 
+.badge-danger {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
 .bar-chart {
   align-items: end;
   display: grid;
@@ -727,6 +732,99 @@ th {
 
 .member-loan-panel {
   max-width: 780px;
+}
+
+.loan-policy-summary {
+  background: #ecfdf5;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px;
+}
+
+.loan-policy-summary span {
+  background: #fff;
+  border: 1px solid #dcfce7;
+  border-radius: 999px;
+  color: #14532d;
+  font-size: 0.85rem;
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
+.loan-policy-note {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  color: #78350f;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+}
+
+.guarantor-results,
+.member-picker,
+.announcement-list {
+  display: grid;
+  gap: 8px;
+}
+
+.guarantor-results button {
+  background: #fff;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  color: #14532d;
+  min-height: 38px;
+  padding: 0 12px;
+  text-align: left;
+}
+
+.guarantor-results button.active,
+.guarantor-results button:hover {
+  background: #14532d;
+  color: #fff;
+}
+
+.member-picker {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.announcement-item {
+  background: #fff;
+  border: 1px solid #dcfce7;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.announcement-item div {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.announcement-item h3 {
+  font-size: 1rem;
+}
+
+.announcement-item span,
+.announcement-item p {
+  color: #6b7280;
 }
 
 .modal-backdrop {

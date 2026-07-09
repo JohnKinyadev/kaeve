@@ -22,9 +22,12 @@ from rest_framework.response import Response
 
 from .auth_tokens import create_token, create_token_pair, get_active_token
 from .models import (
+    Announcement,
     AuthToken,
     CollectionPoint,
     Delivery,
+    FertilizerInventory,
+    FertilizerRequest,
     InventoryStock,
     LedgerEntry,
     Loan,
@@ -47,8 +50,11 @@ from .permissions import (
     role_required,
 )
 from .serializers import (
+    AnnouncementSerializer,
     CollectionPointSerializer,
     DeliverySerializer,
+    FertilizerInventorySerializer,
+    FertilizerRequestSerializer,
     InventoryStockSerializer,
     LedgerEntrySerializer,
     LoanPolicySerializer,
@@ -317,8 +323,18 @@ class RoleScopedModelViewSet(viewsets.ModelViewSet):
         model_name = queryset.model._meta.model_name
         if model_name == "member":
             return queryset.filter(user=self.request.user)
-        if model_name in {"delivery", "loan", "payout", "ledgerentry"}:
+        if model_name in {"delivery", "loan", "payout", "ledgerentry", "fertilizerrequest"}:
             return queryset.filter(member__user=self.request.user)
+        if model_name == "fertilizerinventory":
+            return queryset.filter(is_active=True)
+        if model_name == "announcement":
+            member = getattr(self.request.user, "member_profile", None)
+            if member is None:
+                return queryset.none()
+            return queryset.filter(is_active=True).filter(
+                models.Q(audience=Announcement.Audience.ALL_MEMBERS)
+                | models.Q(audience=Announcement.Audience.SELECTED_MEMBERS, members=member)
+            ).distinct()
         return queryset.none()
 
 
@@ -461,6 +477,97 @@ class InventoryStockViewSet(RoleScopedModelViewSet):
     search_fields = ["season__name", "warehouse"]
     ordering_fields = ["stock_type", "warehouse", "quantity_kg", "created_at"]
     exact_filter_fields = ["season", "stock_type", "warehouse"]
+
+
+class AnnouncementViewSet(RoleScopedModelViewSet):
+    queryset = Announcement.objects.prefetch_related("members").select_related("published_by").all()
+    serializer_class = AnnouncementSerializer
+    search_fields = ["title", "body", "members__full_name", "members__membership_number"]
+    ordering_fields = ["published_at", "created_at", "updated_at"]
+    exact_filter_fields = ["audience", "is_active"]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if get_user_role(self.request.user) != MEMBER_ROLE:
+            return queryset
+
+        member = getattr(self.request.user, "member_profile", None)
+        if member is None:
+            return queryset.none()
+        return queryset.filter(is_active=True).filter(
+            models.Q(audience=Announcement.Audience.ALL_MEMBERS)
+            | models.Q(audience=Announcement.Audience.SELECTED_MEMBERS, members=member)
+        ).distinct()
+
+    def perform_create(self, serializer):
+        serializer.save(published_by=self.request.user, published_at=timezone.now())
+
+
+class FertilizerInventoryViewSet(RoleScopedModelViewSet):
+    queryset = FertilizerInventory.objects.all()
+    serializer_class = FertilizerInventorySerializer
+    search_fields = ["name", "fertilizer_type"]
+    ordering_fields = ["name", "fertilizer_type", "quantity_kg", "member_cap_kg", "updated_at"]
+    exact_filter_fields = ["is_active", "fertilizer_type"]
+
+
+class FertilizerRequestViewSet(RoleScopedModelViewSet):
+    queryset = FertilizerRequest.objects.select_related("member", "inventory", "reviewed_by").all()
+    serializer_class = FertilizerRequestSerializer
+    search_fields = ["member__membership_number", "member__full_name", "inventory__name", "reason"]
+    ordering_fields = ["requested_kg", "status", "created_at", "reviewed_at"]
+    exact_filter_fields = ["member", "inventory", "status"]
+
+    def create(self, request, *args, **kwargs):
+        data = request.data.copy()
+        if not data.get("inventory"):
+            inventory = FertilizerInventory.objects.filter(is_active=True, quantity_kg__gt=0).first()
+            if inventory is None:
+                raise ValidationError({"detail": "No active fertilizer stock is available."})
+            data["inventory"] = inventory.id
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(serializer.data, status=201)
+
+    def perform_create(self, serializer):
+        save_kwargs = {"status": FertilizerRequest.Status.PENDING}
+        if get_user_role(self.request.user) == MEMBER_ROLE:
+            member = getattr(self.request.user, "member_profile", None)
+            if member is None:
+                raise ValidationError({"detail": "Complete your member profile before requesting fertilizer."})
+            save_kwargs["member"] = member
+        serializer.save(**save_kwargs)
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def approve(self, request, pk=None):
+        if get_user_role(request.user) not in {ADMIN_ROLE, MANAGER_ROLE}:
+            raise ValidationError({"detail": "Only admins and managers can approve fertilizer requests."})
+
+        fertilizer_request = self.get_object()
+        if fertilizer_request.status != FertilizerRequest.Status.PENDING:
+            raise ValidationError({"detail": "Only pending fertilizer requests can be approved."})
+
+        inventory = FertilizerInventory.objects.select_for_update().get(id=fertilizer_request.inventory_id)
+        if fertilizer_request.requested_kg > inventory.quantity_kg:
+            raise ValidationError({"detail": "Not enough fertilizer stock is available to approve this request."})
+
+        inventory.quantity_kg = inventory.quantity_kg - fertilizer_request.requested_kg
+        inventory.save(update_fields=["quantity_kg", "updated_at"])
+        fertilizer_request.approve(request.user)
+        return Response(self.get_serializer(fertilizer_request).data)
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        if get_user_role(request.user) not in {ADMIN_ROLE, MANAGER_ROLE}:
+            raise ValidationError({"detail": "Only admins and managers can reject fertilizer requests."})
+
+        fertilizer_request = self.get_object()
+        if fertilizer_request.status != FertilizerRequest.Status.PENDING:
+            raise ValidationError({"detail": "Only pending fertilizer requests can be rejected."})
+        fertilizer_request.reject(request.user)
+        return Response(self.get_serializer(fertilizer_request).data)
 
 
 class LoanViewSet(RoleScopedModelViewSet):
