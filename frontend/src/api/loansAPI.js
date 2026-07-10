@@ -9,4 +9,5 @@ export const loansAPI = {
   searchGuarantors: (search) => apiClient.get(`/api/members/guarantor-search/${toQueryString({ search })}`),
   approve: (id) => apiClient.post(`/api/loans/${id}/approve/`, {}),
   reject: (id, reason) => apiClient.post(`/api/loans/${id}/reject/`, { reason }),
+  reopen: (id) => apiClient.post(`/api/loans/${id}/reopen/`, {}),
 };

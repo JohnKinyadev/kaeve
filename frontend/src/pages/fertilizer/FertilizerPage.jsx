@@ -70,6 +70,17 @@ export function FertilizerPage() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function editInventory(item) {
+    setForm({
+      id: item.id,
+      name: item.name || "",
+      fertilizer_type: item.fertilizer_type || "",
+      quantity_kg: item.quantity_kg || "",
+      member_cap_kg: item.member_cap_kg || "",
+      is_active: item.is_active,
+    });
+  }
+
   async function handleInventorySubmit(event) {
     event.preventDefault();
     setError("");
@@ -105,9 +116,12 @@ export function FertilizerPage() {
       if (action === "approve") {
         await fertilizerAPI.approve(id);
         setMessage("Fertilizer request approved and stock updated.");
-      } else {
+      } else if (action === "reject") {
         await fertilizerAPI.reject(id);
         setMessage("Fertilizer request rejected.");
+      } else {
+        await fertilizerAPI.reopen(id);
+        setMessage("Fertilizer request reopened for correction.");
       }
       setReloadKey((value) => value + 1);
     } catch (err) {
@@ -121,7 +135,7 @@ export function FertilizerPage() {
         <div className="panel-header">
           <div>
             <h2>Fertilizer inventory</h2>
-            <span>Set factory stock and the maximum kg one member can request.</span>
+            <span>Set factory stock and the maximum kg one member can request for each fertilizer.</span>
           </div>
           <Package size={22} />
         </div>
@@ -137,17 +151,19 @@ export function FertilizerPage() {
           {error && <div className="form-error field-wide">{error}</div>}
           {message && <div className="form-success field-wide">{message}</div>}
           <div className="form-actions">
+            <Button variant="secondary" onClick={() => setForm(emptyInventoryForm)}>Add fertilizer type</Button>
             <Button type="submit" disabled={isSaving}>{isSaving ? "Saving..." : "Save inventory"}</Button>
           </div>
         </form>
       </article>
 
       <section className="stat-grid">
-        {inventory.slice(0, 3).map((item) => (
+        {inventory.map((item) => (
           <article className="stat-card" key={item.id}>
             <span>{item.fertilizer_type}</span>
             <strong>{formatKg(Number(item.quantity_kg || 0))}</strong>
             <small>Cap per member: {formatKg(Number(item.member_cap_kg || 0))}</small>
+            <Button variant="ghost" onClick={() => editInventory(item)}>Edit</Button>
           </article>
         ))}
       </section>
@@ -175,6 +191,9 @@ export function FertilizerPage() {
               </Button>
               <Button variant="danger" disabled={row.status !== "pending"} onClick={() => reviewRequest(row.id, "reject")}>
                 <X size={16} /> Reject
+              </Button>
+              <Button variant="ghost" disabled={row.status === "pending"} onClick={() => reviewRequest(row.id, "reopen")}>
+                Correct
               </Button>
             </div>
           )}

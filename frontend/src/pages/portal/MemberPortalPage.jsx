@@ -55,7 +55,7 @@ export function MemberPortalPage({ initialTab = "overview" }) {
   const [guarantorResults, setGuarantorResults] = useState([]);
   const [guarantorNotice, setGuarantorNotice] = useState("");
   const [selectedGuarantorLabel, setSelectedGuarantorLabel] = useState("");
-  const [fertilizerForm, setFertilizerForm] = useState({ requested_kg: "", reason: "" });
+  const [fertilizerForm, setFertilizerForm] = useState({ inventory: "", requested_kg: "", reason: "" });
   const [loanMessage, setLoanMessage] = useState("");
   const [loanError, setLoanError] = useState("");
   const [fertilizerMessage, setFertilizerMessage] = useState("");
@@ -115,13 +115,12 @@ export function MemberPortalPage({ initialTab = "overview" }) {
     setIsRequestingFertilizer(true);
 
     try {
-      const activeInventory = fertilizerInventory.find((item) => item.is_active) || fertilizerInventory[0];
       await fertilizerAPI.createRequest({
-        inventory: activeInventory?.id,
+        inventory: fertilizerForm.inventory,
         requested_kg: fertilizerForm.requested_kg,
         reason: fertilizerForm.reason,
       });
-      setFertilizerForm({ requested_kg: "", reason: "" });
+      setFertilizerForm((value) => ({ ...value, requested_kg: "", reason: "" }));
       setFertilizerMessage("Fertilizer request submitted for admin or manager approval.");
       setReloadKey((value) => value + 1);
     } catch (err) {
@@ -264,7 +263,12 @@ export function MemberPortalPage({ initialTab = "overview" }) {
         setLoans(listResults(loanResponse));
         setPayouts(listResults(payoutResponse));
         setAnnouncements(listResults(announcementResponse));
-        setFertilizerInventory(listResults(fertilizerInventoryResponse));
+        const inventoryRows = listResults(fertilizerInventoryResponse);
+        setFertilizerInventory(inventoryRows);
+        setFertilizerForm((value) => ({
+          ...value,
+          inventory: value.inventory || String(inventoryRows[0]?.id || ""),
+        }));
         setFertilizerRequests(listResults(fertilizerRequestResponse));
       } catch (err) {
         if (isMounted) setError(err.message || "Unable to load member records");
@@ -287,10 +291,17 @@ export function MemberPortalPage({ initialTab = "overview" }) {
   const needsProfile = !member;
   const usesFutureHarvest = loanForm.collateral_type === "future_harvest";
   const eligibleAmount = Number(eligibility?.eligible_amount || 0);
+  const existingActiveLoanAmount = Number(eligibility?.existing_active_loan_amount || 0);
+  const remainingEligibleAmount = Number(eligibility?.remaining_eligible_amount ?? eligibleAmount);
   const applicationsClosed = loanPolicy && !loanPolicy.applications_open;
-  const activeFertilizerInventory = fertilizerInventory.find((item) => item.is_active) || fertilizerInventory[0];
-  const fertilizerCapKg = Number(activeFertilizerInventory?.member_cap_kg || 0);
-  const fertilizerStockKg = Number(activeFertilizerInventory?.quantity_kg || 0);
+  const selectedFertilizerInventory = fertilizerInventory.find((item) => String(item.id) === String(fertilizerForm.inventory)) || fertilizerInventory[0];
+  const fertilizerCapKg = Number(selectedFertilizerInventory?.member_cap_kg || 0);
+  const fertilizerStockKg = Number(selectedFertilizerInventory?.quantity_kg || 0);
+  const alreadyRequestedFertilizerKg = fertilizerRequests
+    .filter((request) => String(request.inventory) === String(selectedFertilizerInventory?.id))
+    .filter((request) => ["pending", "approved"].includes(request.status))
+    .reduce((sum, request) => sum + Number(request.requested_kg || 0), 0);
+  const remainingFertilizerKg = Math.max(fertilizerCapKg - alreadyRequestedFertilizerKg, 0);
 
   return (
     <main className="portal-screen role-member">
@@ -405,6 +416,8 @@ export function MemberPortalPage({ initialTab = "overview" }) {
                   <span>Interest: {loanPolicy.interest_rate_percent}%</span>
                   <span>Harvest cap: {loanPolicy.future_harvest_cap_percent}%</span>
                   <span>Eligible limit: {formatCurrency(eligibleAmount)}</span>
+                  <span>Existing active loans: {formatCurrency(existingActiveLoanAmount)}</span>
+                  <span>Remaining: {formatCurrency(remainingEligibleAmount)}</span>
                 </div>
               )}
               {applicationsClosed && <div className="form-error field-wide">Loan applications are currently closed.</div>}
@@ -441,6 +454,7 @@ export function MemberPortalPage({ initialTab = "overview" }) {
                 label="Amount requested"
                 type="number"
                 min="1"
+                max={remainingEligibleAmount || undefined}
                 step="0.01"
                 value={loanForm.amount}
                 onChange={(event) => setLoanForm((value) => ({ ...value, amount: event.target.value }))}
@@ -530,7 +544,7 @@ export function MemberPortalPage({ initialTab = "overview" }) {
               {loanError && <div className="form-error">{loanError}</div>}
               {loanMessage && <div className="form-success">{loanMessage}</div>}
               <div className="form-actions">
-                <Button type="submit" disabled={isApplyingLoan || applicationsClosed || (usesFutureHarvest && eligibleAmount <= 0)}>
+                <Button type="submit" disabled={isApplyingLoan || applicationsClosed || remainingEligibleAmount <= 0}>
                   {isApplyingLoan ? "Submitting..." : "Submit application"}
                 </Button>
               </div>
@@ -554,7 +568,7 @@ export function MemberPortalPage({ initialTab = "overview" }) {
                 <h2>Complete registration first</h2>
                 <p>Your member profile is required before you can request fertilizer.</p>
               </div>
-            ) : !activeFertilizerInventory ? (
+            ) : !selectedFertilizerInventory ? (
               <div className="empty-state">
                 <h2>No fertilizer available</h2>
                 <p>The factory has not opened fertilizer applications yet.</p>
@@ -562,15 +576,45 @@ export function MemberPortalPage({ initialTab = "overview" }) {
             ) : (
               <form className="form-grid" onSubmit={handleFertilizerSubmit}>
                 <div className="loan-policy-summary field-wide">
-                  <span>Type: {activeFertilizerInventory.fertilizer_type}</span>
+                  <span>Type: {selectedFertilizerInventory.fertilizer_type}</span>
                   <span>Available: {formatKg(fertilizerStockKg)}</span>
                   <span>Member cap: {formatKg(fertilizerCapKg)}</span>
+                  <span>Already requested: {formatKg(alreadyRequestedFertilizerKg)}</span>
+                  <span>Remaining: {formatKg(remainingFertilizerKg)}</span>
+                </div>
+                <label className="field field-wide">
+                  <span>Available fertilizer</span>
+                  <select
+                    value={fertilizerForm.inventory}
+                    onChange={(event) => setFertilizerForm((value) => ({ ...value, inventory: event.target.value, requested_kg: "" }))}
+                    required
+                  >
+                    {fertilizerInventory.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} - {item.fertilizer_type} ({formatKg(Number(item.quantity_kg || 0))} available)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="fertilizer-choice-grid field-wide">
+                  {fertilizerInventory.map((item) => (
+                    <button
+                      className={String(item.id) === String(fertilizerForm.inventory) ? "fertilizer-choice active" : "fertilizer-choice"}
+                      key={item.id}
+                      type="button"
+                      onClick={() => setFertilizerForm((value) => ({ ...value, inventory: String(item.id), requested_kg: "" }))}
+                    >
+                      <strong>{item.fertilizer_type}</strong>
+                      <span>{formatKg(Number(item.quantity_kg || 0))} available</span>
+                      <small>Cap: {formatKg(Number(item.member_cap_kg || 0))}</small>
+                    </button>
+                  ))}
                 </div>
                 <Input
                   label="Kg requested"
                   type="number"
                   min="0.01"
-                  max={fertilizerCapKg || undefined}
+                  max={remainingFertilizerKg || undefined}
                   step="0.01"
                   value={fertilizerForm.requested_kg}
                   onChange={(event) => setFertilizerForm((value) => ({ ...value, requested_kg: event.target.value }))}
@@ -584,7 +628,7 @@ export function MemberPortalPage({ initialTab = "overview" }) {
                 {fertilizerError && <div className="form-error field-wide">{fertilizerError}</div>}
                 {fertilizerMessage && <div className="form-success field-wide">{fertilizerMessage}</div>}
                 <div className="form-actions">
-                  <Button type="submit" disabled={isRequestingFertilizer || fertilizerStockKg <= 0 || fertilizerCapKg <= 0}>
+                  <Button type="submit" disabled={isRequestingFertilizer || fertilizerStockKg <= 0 || remainingFertilizerKg <= 0}>
                     {isRequestingFertilizer ? "Submitting..." : "Submit request"}
                   </Button>
                 </div>

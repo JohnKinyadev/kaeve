@@ -574,6 +574,27 @@ class FertilizerRequestViewSet(RoleScopedModelViewSet):
         fertilizer_request.reject(request.user)
         return Response(self.get_serializer(fertilizer_request).data)
 
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def reopen(self, request, pk=None):
+        if get_user_role(request.user) not in {ADMIN_ROLE, MANAGER_ROLE}:
+            raise ValidationError({"detail": "Only admins and managers can correct fertilizer review decisions."})
+
+        fertilizer_request = self.get_object()
+        if fertilizer_request.status == FertilizerRequest.Status.PENDING:
+            raise ValidationError({"detail": "This fertilizer request is already pending."})
+
+        if fertilizer_request.status == FertilizerRequest.Status.APPROVED:
+            inventory = FertilizerInventory.objects.select_for_update().get(id=fertilizer_request.inventory_id)
+            inventory.quantity_kg = inventory.quantity_kg + fertilizer_request.requested_kg
+            inventory.save(update_fields=["quantity_kg", "updated_at"])
+
+        fertilizer_request.status = FertilizerRequest.Status.PENDING
+        fertilizer_request.reviewed_by = None
+        fertilizer_request.reviewed_at = None
+        fertilizer_request.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+        return Response(self.get_serializer(fertilizer_request).data)
+
 
 class LoanViewSet(RoleScopedModelViewSet):
     queryset = Loan.objects.select_related("member", "season", "reviewed_by").all()
@@ -624,6 +645,25 @@ class LoanViewSet(RoleScopedModelViewSet):
         loan = reject_loan(self.get_object(), request.user)
         return Response(self.get_serializer(loan).data)
 
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def reopen(self, request, pk=None):
+        if get_user_role(request.user) not in {ADMIN_ROLE, MANAGER_ROLE}:
+            raise ValidationError({"detail": "Only admins and managers can correct loan review decisions."})
+
+        loan = self.get_object()
+        if loan.status == Loan.Status.PENDING:
+            raise ValidationError({"detail": "This loan is already pending."})
+        if loan.status == Loan.Status.DEDUCTED:
+            raise ValidationError({"detail": "Deducted loans cannot be reopened after payout recovery."})
+
+        loan.status = Loan.Status.PENDING
+        loan.reviewed_by = None
+        loan.reviewed_at = None
+        loan.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+        sync_loan_ledger_entry(loan)
+        return Response(self.get_serializer(loan).data)
+
     @action(detail=False, methods=["get"])
     def eligibility(self, request):
         if get_user_role(request.user) != MEMBER_ROLE:
@@ -649,10 +689,18 @@ class LoanViewSet(RoleScopedModelViewSet):
             collateral_type=collateral_type,
             policy=policy,
         )
+        existing_active_amount = Loan.objects.filter(
+            member=member,
+            season=season,
+            status__in=[Loan.Status.PENDING, Loan.Status.APPROVED],
+        ).aggregate(total=Sum("amount"))["total"] or 0
+        remaining_eligible_amount = eligible_amount - existing_active_amount
         last_12_month_kg = member_last_12_month_delivery_kg(member)
         return Response(
             {
                 "eligible_amount": eligible_amount,
+                "existing_active_loan_amount": existing_active_amount,
+                "remaining_eligible_amount": max(remaining_eligible_amount, 0),
                 "last_12_month_delivery_kg": last_12_month_kg,
                 "advance_rate_per_kg": policy.advance_rate_per_kg,
                 "interest_rate_percent": policy.interest_rate_percent,

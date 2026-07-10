@@ -195,6 +195,7 @@ class RoleBasedApiPermission(BasePermission):
         "approve": "change",
         "reject": "change",
         "apply": "add",
+        "reopen": "change",
     }
 
     def has_permission(self, request, view):

@@ -9,4 +9,5 @@ export const fertilizerAPI = {
   createRequest: (payload) => apiClient.post("/api/fertilizer-requests/", payload),
   approve: (id) => apiClient.post(`/api/fertilizer-requests/${id}/approve/`, {}),
   reject: (id) => apiClient.post(`/api/fertilizer-requests/${id}/reject/`, {}),
+  reopen: (id) => apiClient.post(`/api/fertilizer-requests/${id}/reopen/`, {}),
 };

@@ -33,6 +33,7 @@ export function LoansPage() {
   const { role } = useAuth();
   const [status, setStatus] = useState("pending");
   const [action, setAction] = useState(null);
+  const [selectedLoan, setSelectedLoan] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyLoanForm);
   const [policy, setPolicy] = useState(null);
@@ -98,12 +99,14 @@ export function LoansPage() {
     try {
       if (action.type === "Approve") {
         await loansAPI.approve(action.row.id);
-      } else {
+      } else if (action.type === "Reject") {
         await loansAPI.reject(action.row.id);
+      } else {
+        await loansAPI.reopen(action.row.id);
       }
       await loans.reload();
       setAction(null);
-      setMessage(`Loan ${action.type.toLowerCase()}d.`);
+      setMessage(action.type === "Reopen" ? "Loan reopened for correction." : `Loan ${action.type.toLowerCase()}d.`);
     } catch (err) {
       setMessage(err.message || "Unable to update loan.");
     }
@@ -248,15 +251,55 @@ export function LoansPage() {
           ]}
           rows={getResults(loans.data)}
           renderActions={(row) =>
-            canReview && row.status === "pending" ? (
-              <>
-                <Button variant="ghost" onClick={() => setAction({ type: "Approve", row })}>Approve</Button>
-                <Button variant="ghost" onClick={() => setAction({ type: "Reject", row })}>Reject</Button>
-              </>
-            ) : null
+            (
+              <div className="row-actions">
+                <Button variant="ghost" onClick={() => setSelectedLoan(row)}>View</Button>
+                {canReview && row.status === "pending" && (
+                  <>
+                    <Button variant="ghost" onClick={() => setAction({ type: "Approve", row })}>Approve</Button>
+                    <Button variant="ghost" onClick={() => setAction({ type: "Reject", row })}>Reject</Button>
+                  </>
+                )}
+                {canReview && ["approved", "rejected"].includes(row.status) && (
+                  <Button variant="ghost" onClick={() => setAction({ type: "Reopen", row })}>Correct</Button>
+                )}
+              </div>
+            )
           }
         />
       </article>
+      {selectedLoan && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="modal loan-detail-modal" role="dialog" aria-modal="true" aria-label="Loan details">
+            <header>
+              <h2>Loan details</h2>
+              <Button variant="ghost" onClick={() => setSelectedLoan(null)}>Close</Button>
+            </header>
+            <dl className="detail-list">
+              <div><dt>Member</dt><dd>{selectedLoan.membership_number} - {selectedLoan.member_name}</dd></div>
+              <div><dt>Season</dt><dd>{selectedLoan.season_name}</dd></div>
+              <div><dt>Type</dt><dd>{selectedLoan.loan_type_display || selectedLoan.loan_type}</dd></div>
+              <div><dt>Proof</dt><dd>{selectedLoan.proof_type_display || selectedLoan.proof_type}</dd></div>
+              <div><dt>Collateral</dt><dd>{selectedLoan.collateral_type_display || selectedLoan.collateral_type}</dd></div>
+              <div><dt>Guarantor</dt><dd>{selectedLoan.guarantor_name ? `${selectedLoan.guarantor_membership_number} - ${selectedLoan.guarantor_name}` : "Not applicable"}</dd></div>
+              <div><dt>Amount</dt><dd>{formatCurrency(Number(selectedLoan.amount || 0))}</dd></div>
+              <div><dt>Eligible</dt><dd>{formatCurrency(Number(selectedLoan.eligible_amount || 0))}</dd></div>
+              <div><dt>Interest</dt><dd>{formatCurrency(Number(selectedLoan.estimated_interest || 0))} at {selectedLoan.interest_rate_percent}%</dd></div>
+              <div><dt>Recovery</dt><dd>{formatCurrency(Number(selectedLoan.recovery_amount || 0))}</dd></div>
+              <div><dt>Term</dt><dd>{selectedLoan.term_months} months</dd></div>
+              <div><dt>Last 12 months delivery</dt><dd>{selectedLoan.last_12_month_delivery_kg} kg</dd></div>
+              <div><dt>Reason</dt><dd>{selectedLoan.reason || "No reason provided"}</dd></div>
+              <div><dt>Guarantor notes</dt><dd>{selectedLoan.guarantor_details || "None"}</dd></div>
+              <div><dt>Collateral notes</dt><dd>{selectedLoan.collateral_details || "None"}</dd></div>
+              <div><dt>Status</dt><dd>{selectedLoan.status_display || selectedLoan.status}</dd></div>
+              <div><dt>Reviewed by</dt><dd>{selectedLoan.reviewed_by_username || "Not reviewed"}</dd></div>
+            </dl>
+            <footer>
+              <Button onClick={() => setSelectedLoan(null)}>Done</Button>
+            </footer>
+          </section>
+        </div>
+      )}
       {action && (
         <Modal title={`${action.type} loan?`} confirmLabel={action.type} onClose={() => setAction(null)} onConfirm={confirmAction}>
           <p>{action.type} {action.row.member_name}'s loan request for {formatCurrency(Number(action.row.amount || 0))}.</p>

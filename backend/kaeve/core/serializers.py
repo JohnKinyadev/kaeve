@@ -467,6 +467,7 @@ class FertilizerRequestSerializer(CleanModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        member = attrs.get("member") or getattr(self.instance, "member", None)
         inventory = attrs.get("inventory") or getattr(self.instance, "inventory", None)
         requested_kg = Decimal(attrs.get("requested_kg", getattr(self.instance, "requested_kg", 0)) or 0)
 
@@ -480,6 +481,25 @@ class FertilizerRequestSerializer(CleanModelSerializer):
             raise serializers.ValidationError(
                 {"requested_kg": f"Requested fertilizer exceeds the member cap of {inventory.member_cap_kg} kg."}
             )
+        if member and inventory:
+            existing_requests = FertilizerRequest.objects.filter(
+                member=member,
+                inventory=inventory,
+                status__in=[FertilizerRequest.Status.PENDING, FertilizerRequest.Status.APPROVED],
+            )
+            if self.instance:
+                existing_requests = existing_requests.exclude(id=self.instance.id)
+            already_requested_kg = existing_requests.aggregate(total=models.Sum("requested_kg"))["total"] or Decimal("0")
+            remaining_kg = Decimal(inventory.member_cap_kg or 0) - already_requested_kg
+            if requested_kg > remaining_kg:
+                raise serializers.ValidationError(
+                    {
+                        "requested_kg": (
+                            f"You have already requested {already_requested_kg} kg for this fertilizer. "
+                            f"Remaining limit is {max(remaining_kg, Decimal('0.00'))} kg."
+                        )
+                    }
+                )
         if requested_kg > Decimal(inventory.quantity_kg or 0):
             raise serializers.ValidationError({"requested_kg": "Requested fertilizer exceeds available factory stock."})
         return attrs
@@ -638,9 +658,24 @@ class LoanSerializer(CleanModelSerializer):
                 policy=policy,
             )
             attrs["eligible_amount"] = eligible_amount
-            if amount is not None and Decimal(amount) > eligible_amount:
+            active_loans = Loan.objects.filter(
+                member=member,
+                season=season,
+                status__in=[Loan.Status.PENDING, Loan.Status.APPROVED],
+            )
+            if self.instance:
+                active_loans = active_loans.exclude(id=self.instance.id)
+            existing_active_amount = active_loans.aggregate(total=models.Sum("amount"))["total"] or Decimal("0")
+            remaining_eligible_amount = eligible_amount - existing_active_amount
+            if amount is not None and Decimal(amount) > remaining_eligible_amount:
                 raise serializers.ValidationError(
-                    {"amount": f"Requested amount exceeds eligible limit of Ksh {eligible_amount}."}
+                    {
+                        "amount": (
+                            f"Requested amount exceeds remaining eligible limit of Ksh "
+                            f"{max(remaining_eligible_amount, Decimal('0.00'))}. "
+                            f"Existing pending/approved loans total Ksh {existing_active_amount}."
+                        )
+                    }
                 )
 
         return attrs

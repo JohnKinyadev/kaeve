@@ -802,6 +802,35 @@ th {
   gap: 8px;
 }
 
+.fertilizer-choice-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.fertilizer-choice {
+  background: #fff;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  color: #14532d;
+  display: grid;
+  gap: 4px;
+  min-height: 92px;
+  padding: 12px;
+  text-align: left;
+}
+
+.fertilizer-choice.active,
+.fertilizer-choice:hover {
+  background: #14532d;
+  color: #fff;
+}
+
+.fertilizer-choice span,
+.fertilizer-choice small {
+  font-size: 0.85rem;
+}
+
 .announcement-item {
   background: #fff;
   border: 1px solid #dcfce7;
@@ -846,6 +875,33 @@ th {
   max-width: 460px;
   padding: 20px;
   width: 100%;
+}
+
+.loan-detail-modal {
+  max-width: 720px;
+}
+
+.detail-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.detail-list div {
+  border-bottom: 1px solid #e5e7eb;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: minmax(140px, 0.35fr) minmax(0, 1fr);
+  padding-bottom: 8px;
+}
+
+.detail-list dt {
+  color: #6b7280;
+  font-weight: 800;
+}
+
+.detail-list dd {
+  margin: 0;
 }
 
 .modal header,
@@ -954,6 +1010,7 @@ th {
   .stat-grid,
   .content-grid,
   .report-grid,
+  .fertilizer-choice-grid,
   .form-grid {
     grid-template-columns: 1fr;
   }
