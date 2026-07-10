@@ -10,6 +10,7 @@ import { ExportButton } from "../../components/shared/ExportButton";
 import { useApiResource } from "../../hooks/useApiResource";
 import { formatCurrency, formatKg } from "../../utils/formatters";
 import { getResults, toQueryString } from "../../utils/helpers";
+import { downloadCsv } from "../../utils/downloads";
 
 const emptyForm = {
   member: "",
@@ -67,6 +68,23 @@ export function PayoutsPage() {
     }
   }
 
+  function exportMpesaCsv() {
+    if (!rows.length) {
+      setMessage("No payouts available to export.");
+      return;
+    }
+    downloadCsv(`mpesa-payouts-season-${selectedSeason || "all"}.csv`, rows, [
+      { label: "Membership No.", value: (row) => row.membership_number || "" },
+      { label: "Member Name", value: (row) => row.member_name || "" },
+      { label: "Phone Number", value: (row) => row.phone_number || "" },
+      { label: "Kg Delivered", value: (row) => row.delivered_kg || "0.00" },
+      { label: "Gross Amount", value: (row) => row.gross_share || "0.00" },
+      { label: "Loan Deductions", value: (row) => row.loan_deductions || "0.00" },
+      { label: "Other Deductions", value: (row) => row.other_deductions || "0.00" },
+      { label: "Net Payable", value: (row) => row.net_payable || "0.00" },
+    ]);
+  }
+
   return (
     <div className="page-stack">
       {(payouts.error || seasons.error || members.error) && <div className="form-error">{payouts.error || seasons.error || members.error}</div>}
@@ -80,7 +98,7 @@ export function PayoutsPage() {
         </select>
         <Button onClick={generatePayouts}>Trigger Calculation</Button>
         <Button variant="secondary" onClick={() => setIsFormOpen((value) => !value)}>Record Payout</Button>
-        <ExportButton>Export M-Pesa Excel</ExportButton>
+        <ExportButton onClick={exportMpesaCsv}>Export M-Pesa Excel</ExportButton>
         <Button variant="secondary"><CheckCircle2 size={16} /> Mark All Processed</Button>
       </section>
 

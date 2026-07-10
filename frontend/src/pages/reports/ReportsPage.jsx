@@ -1,6 +1,15 @@
 import { BarChart3 } from "lucide-react";
 
 import { ExportButton } from "../../components/shared/ExportButton";
+import { downloadCsv } from "../../utils/downloads";
+
+function downloadReport(report) {
+  const slug = report.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  downloadCsv(`${slug}-report.csv`, [{ report, generated_at: new Date().toISOString() }], [
+    { label: "Report", key: "report" },
+    { label: "Generated At", key: "generated_at" },
+  ]);
+}
 
 export function ReportsPage() {
   return (
@@ -10,10 +19,9 @@ export function ReportsPage() {
           <BarChart3 size={24} />
           <h2>{report}</h2>
           <p>Generate and export operational records for audit and management review.</p>
-          <ExportButton>Download</ExportButton>
+          <ExportButton onClick={() => downloadReport(report)}>Download</ExportButton>
         </article>
       ))}
     </div>
   );
 }
-

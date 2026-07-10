@@ -13,6 +13,7 @@ import { fertilizerAPI } from "../../api/fertilizerAPI";
 import { loansAPI } from "../../api/loansAPI";
 import { useAuth } from "../../hooks/useAuth";
 import { formatCurrency, formatDate, formatKg } from "../../utils/formatters";
+import { downloadTextFile } from "../../utils/downloads";
 
 function listResults(response) {
   if (Array.isArray(response)) return response;
@@ -128,6 +129,42 @@ export function MemberPortalPage({ initialTab = "overview" }) {
     } finally {
       setIsRequestingFertilizer(false);
     }
+  }
+
+  function downloadMemberStatement() {
+    if (!member || !latestPayout) return;
+
+    const deliveryRows = deliveries.slice(0, 10).map((delivery) => (
+      `<tr><td>${formatDate(delivery.delivery_date)}</td><td>${delivery.collection_point_name || ""}</td><td>${formatKg(Number(delivery.weight_kg || 0))}</td><td>${delivery.grade_display || ""}</td></tr>`
+    )).join("");
+    const content = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Member Statement - ${member.full_name}</title>
+    <style>
+      body { color: #111827; font-family: Arial, sans-serif; padding: 32px; }
+      h1 { color: #14532d; margin-bottom: 4px; }
+      table { border-collapse: collapse; margin-top: 20px; width: 100%; }
+      td, th { border-bottom: 1px solid #e5e7eb; padding: 10px; text-align: left; }
+      .summary { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>Kaeve Coffee Cooperative</h1>
+    <p>${member.membership_number} - ${member.full_name}</p>
+    <div class="summary">
+      <p><strong>Season deliveries:</strong> ${formatKg(totalKg)}</p>
+      <p><strong>Latest payout:</strong> ${formatCurrency(Number(latestPayout.net_payable || 0))}</p>
+      <p><strong>Loan status:</strong> ${activeLoan?.status_display || activeLoan?.status || "No active loan"}</p>
+    </div>
+    <table>
+      <thead><tr><th>Date</th><th>Collection Point</th><th>Weight</th><th>Grade</th></tr></thead>
+      <tbody>${deliveryRows}</tbody>
+    </table>
+  </body>
+</html>`;
+    downloadTextFile(`member-statement-${member.membership_number}.html`, content, "text/html;charset=utf-8");
   }
 
   useEffect(() => {
@@ -634,7 +671,7 @@ export function MemberPortalPage({ initialTab = "overview" }) {
                 <h2>Recent Deliveries</h2>
                 <span>{member?.membership_number || "Complete registration to link records"}</span>
               </div>
-              <Button disabled={!latestPayout}><Download size={16} /> Download</Button>
+              <Button disabled={!latestPayout} onClick={downloadMemberStatement}><Download size={16} /> Download</Button>
             </div>
             <Table
               columns={[
