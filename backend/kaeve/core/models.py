@@ -102,6 +102,7 @@ class Season(TimeStampedModel):
     season_type = models.CharField(max_length=20, choices=SeasonType.choices)
     start_date = models.DateField()
     end_date = models.DateField(null=True, blank=True)
+    payout_rate_per_kg = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     is_active = models.BooleanField(default=True)
     is_closed = models.BooleanField(default=False)
     closed_at = models.DateTimeField(null=True, blank=True)

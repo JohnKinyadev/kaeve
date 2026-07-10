@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 
 import { apiClient } from "../../api/axiosInstance";
@@ -16,7 +16,6 @@ const emptyForm = {
   member: "",
   season: "",
   delivered_kg: "",
-  gross_share: "",
   other_deductions: "0.00",
 };
 
@@ -30,7 +29,29 @@ export function PayoutsPage() {
   const payouts = useApiResource(`/api/payouts/${toQueryString({ season })}`);
   const seasonOptions = getResults(seasons.data);
   const selectedSeason = season || seasonOptions.find((item) => item.is_active)?.id || "";
+  const selectedSeasonOption = seasonOptions.find((item) => String(item.id) === String(form.season || selectedSeason));
+  const payoutRate = Number(selectedSeasonOption?.payout_rate_per_kg || 0);
   const rows = getResults(payouts.data);
+
+  useEffect(() => {
+    async function loadDeliveredKg() {
+      const seasonId = form.season || selectedSeason;
+      if (!isFormOpen || !form.member || !seasonId) {
+        setForm((current) => ({ ...current, delivered_kg: "" }));
+        return;
+      }
+
+      try {
+        const response = await apiClient.get(`/api/deliveries/${toQueryString({ member: form.member, season: seasonId })}`);
+        const deliveredKg = getResults(response).reduce((sum, delivery) => sum + Number(delivery.weight_kg || 0), 0);
+        setForm((current) => ({ ...current, delivered_kg: deliveredKg.toFixed(2) }));
+      } catch (err) {
+        setMessage(err.message || "Unable to load member deliveries.");
+      }
+    }
+
+    loadDeliveredKg();
+  }, [form.member, form.season, isFormOpen, selectedSeason]);
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -56,8 +77,9 @@ export function PayoutsPage() {
     setMessage("");
     try {
       await apiClient.post("/api/payouts/", {
-        ...form,
+        member: form.member,
         season: form.season || selectedSeason,
+        other_deductions: form.other_deductions,
       });
       setForm(emptyForm);
       setIsFormOpen(false);
@@ -97,7 +119,7 @@ export function PayoutsPage() {
           ))}
         </select>
         <Button onClick={generatePayouts}>Trigger Calculation</Button>
-        <Button variant="secondary" onClick={() => setIsFormOpen((value) => !value)}>Record Payout</Button>
+        <Button variant="secondary" onClick={() => { setForm(emptyForm); setIsFormOpen((value) => !value); }}>Record Payout</Button>
         <ExportButton onClick={exportMpesaCsv}>Export M-Pesa Excel</ExportButton>
         <Button variant="secondary"><CheckCircle2 size={16} /> Mark All Processed</Button>
       </section>
@@ -124,12 +146,14 @@ export function PayoutsPage() {
                 ))}
               </select>
             </label>
-            <Input label="Delivered kg" type="number" step="0.01" value={form.delivered_kg} onChange={(event) => updateForm("delivered_kg", event.target.value)} required />
-            <Input label="Gross share" type="number" step="0.01" value={form.gross_share} onChange={(event) => updateForm("gross_share", event.target.value)} required />
+            <Input label="Delivered kg" type="number" step="0.01" value={form.delivered_kg} disabled required />
+            <Input label="Payout rate per kg" type="number" step="0.01" value={payoutRate.toFixed(2)} disabled required />
+            <Input label="Gross share" type="text" value={formatCurrency(Number(form.delivered_kg || 0) * payoutRate)} disabled />
             <Input label="Other deductions" type="number" step="0.01" value={form.other_deductions} onChange={(event) => updateForm("other_deductions", event.target.value)} />
+            {payoutRate <= 0 && <div className="form-error field-wide">Set this season's payout rate before recording payouts.</div>}
             <div className="form-actions">
               <Button variant="secondary" onClick={() => setIsFormOpen(false)}>Cancel</Button>
-              <Button type="submit">Save Payout</Button>
+              <Button type="submit" disabled={!form.member || !selectedSeasonOption || payoutRate <= 0}>Save Payout</Button>
             </div>
           </form>
         </article>

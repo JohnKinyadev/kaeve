@@ -29,6 +29,7 @@ from .services import (
     get_active_loan_policy,
     member_last_12_month_delivery_kg,
     get_approved_loan_recovery_total,
+    money,
 )
 
 
@@ -245,6 +246,7 @@ class SeasonSerializer(CleanModelSerializer):
             "season_type_display",
             "start_date",
             "end_date",
+            "payout_rate_per_kg",
             "is_active",
             "is_closed",
             "closed_at",
@@ -708,6 +710,9 @@ class PayoutSerializer(CleanModelSerializer):
     membership_number = serializers.CharField(source="member.membership_number", read_only=True)
     season_name = serializers.CharField(source="season.name", read_only=True)
     generated_by_username = serializers.CharField(source="generated_by.username", read_only=True)
+    payout_rate_per_kg = serializers.DecimalField(source="season.payout_rate_per_kg", max_digits=10, decimal_places=2, read_only=True)
+    delivered_kg = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+    gross_share = serializers.DecimalField(max_digits=14, decimal_places=2, required=False)
 
     class Meta:
         model = Payout
@@ -718,6 +723,7 @@ class PayoutSerializer(CleanModelSerializer):
             "membership_number",
             "season",
             "season_name",
+            "payout_rate_per_kg",
             "delivered_kg",
             "gross_share",
             "loan_deductions",
@@ -748,14 +754,24 @@ class PayoutSerializer(CleanModelSerializer):
         attrs = super().validate(attrs)
         member = attrs.get("member") or getattr(self.instance, "member", None)
         season = attrs.get("season") or getattr(self.instance, "season", None)
-        gross_share = attrs.get("gross_share", getattr(self.instance, "gross_share", Decimal("0.00")))
         other_deductions = attrs.get(
             "other_deductions",
             getattr(self.instance, "other_deductions", Decimal("0.00")),
         )
 
         if member and season:
+            delivered_kg = Delivery.objects.filter(member=member, season=season).aggregate(total=models.Sum("weight_kg"))[
+                "total"
+            ] or Decimal("0.00")
+            payout_rate = Decimal(season.payout_rate_per_kg or 0)
+            if payout_rate <= 0:
+                raise serializers.ValidationError(
+                    {"season": "Set this season's payout rate per kg before recording payouts."}
+                )
+            gross_share = money(delivered_kg * payout_rate)
             loan_deductions = self._approved_loan_total(member, season)
+            attrs["delivered_kg"] = delivered_kg
+            attrs["gross_share"] = gross_share
             attrs["loan_deductions"] = loan_deductions
             attrs["net_payable"] = Decimal(gross_share or 0) - Decimal(loan_deductions or 0) - Decimal(
                 other_deductions or 0

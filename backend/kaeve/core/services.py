@@ -279,13 +279,10 @@ def get_payout_statement(member, season):
 
 @transaction.atomic
 def generate_season_payouts(season, generated_by):
-    total_kg = get_season_total_delivery_kg(season)
-    net_proceeds = get_season_net_proceeds(season)
+    payout_rate = Decimal(season.payout_rate_per_kg or 0)
 
-    if total_kg <= 0:
-        raise ValueError("Cannot generate payouts for a season with no deliveries.")
-    if net_proceeds < 0:
-        raise ValueError("Cannot generate payouts when season net proceeds are negative.")
+    if payout_rate <= 0:
+        raise ValueError("Set this season's payout rate per kg before generating payouts.")
 
     member_deliveries = (
         Delivery.objects.filter(season=season)
@@ -298,7 +295,7 @@ def generate_season_payouts(season, generated_by):
     for row in member_deliveries:
         member_id = row["member"]
         delivered_kg = row["delivered_kg"] or Decimal("0")
-        gross_share = money((delivered_kg / total_kg) * net_proceeds)
+        gross_share = money(delivered_kg * payout_rate)
         loan_deductions = get_approved_loan_recovery_total(member_id, season)
         net_payable = money(gross_share - loan_deductions)
 

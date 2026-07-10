@@ -7,7 +7,7 @@ import { Modal } from "../../components/ui/Modal";
 import { StatCard } from "../../components/ui/StatCard";
 import { Table } from "../../components/ui/Table";
 import { useApiResource } from "../../hooks/useApiResource";
-import { formatDate, formatKg } from "../../utils/formatters";
+import { formatCurrency, formatDate, formatKg } from "../../utils/formatters";
 
 function seasonIdFromHash() {
   return window.location.hash.replace("#/seasons/", "");
@@ -45,6 +45,7 @@ export function SeasonDetailPage() {
           <span className="eyebrow">{data.is_closed ? "Closed season" : data.is_active ? "Open season" : "Inactive season"}</span>
           <h2>{data.name || "Loading season..."}</h2>
           <p>{formatDate(data.start_date)} | {formatDate(data.end_date)} | {data.season_type_display || data.season_type}</p>
+          <p>Payout rate: {formatCurrency(Number(data.payout_rate_per_kg || 0))}/kg</p>
         </div>
         {!data.is_closed && <Button variant="danger" onClick={() => setIsClosing(true)}>Close Season</Button>}
       </section>
