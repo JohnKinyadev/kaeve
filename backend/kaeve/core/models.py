@@ -116,6 +116,10 @@ class Season(TimeStampedModel):
         ]
 
     def clean(self):
+        if self.payout_rate_per_kg is None:
+            self.payout_rate_per_kg = Decimal("0.00")
+        if self.payout_rate_per_kg < 0:
+            raise ValidationError({"payout_rate_per_kg": "Payout rate cannot be negative."})
         if self.is_closed and self.is_active:
             raise ValidationError("A closed season cannot also be active.")
 

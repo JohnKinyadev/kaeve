@@ -42,7 +42,7 @@ export function SeasonsListPage() {
       season_type: season.season_type,
       start_date: season.start_date || "",
       end_date: season.end_date || "",
-      payout_rate_per_kg: season.payout_rate_per_kg || "0.00",
+      payout_rate_per_kg: season.payout_rate_per_kg ?? "0.00",
       is_active: season.is_active,
     });
     setIsFormOpen(true);
@@ -54,6 +54,7 @@ export function SeasonsListPage() {
     const payload = {
       ...form,
       end_date: form.end_date || null,
+      payout_rate_per_kg: form.payout_rate_per_kg === "" ? "0.00" : form.payout_rate_per_kg,
     };
     delete payload.id;
 

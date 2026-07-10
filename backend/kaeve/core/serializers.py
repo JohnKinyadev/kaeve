@@ -236,6 +236,12 @@ class CollectionPointSerializer(CleanModelSerializer):
 
 class SeasonSerializer(CleanModelSerializer):
     season_type_display = serializers.CharField(source="get_season_type_display", read_only=True)
+    payout_rate_per_kg = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        default=Decimal("0.00"),
+    )
 
     class Meta:
         model = Season
@@ -254,6 +260,13 @@ class SeasonSerializer(CleanModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "season_type_display", "closed_at", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        if "payout_rate_per_kg" in attrs and attrs["payout_rate_per_kg"] in (None, ""):
+            attrs["payout_rate_per_kg"] = Decimal("0.00")
+        elif self.instance is None and "payout_rate_per_kg" not in attrs:
+            attrs["payout_rate_per_kg"] = Decimal("0.00")
+        return super().validate(attrs)
 
 
 class DeliverySerializer(CleanModelSerializer):
