@@ -94,10 +94,15 @@ async function request(path, options = {}, hasRetried = false) {
   const token = getAccessToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    throw new Error(`Unable to reach backend at ${API_BASE_URL || "the configured API URL"}. Check that the Render backend service is running.`);
+  }
 
   if (response.status === 401 && getRefreshToken() && !hasRetried) {
     try {

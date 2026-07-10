@@ -1,27 +1,169 @@
+import { useState } from "react";
 import { BarChart3 } from "lucide-react";
 
+import { apiClient } from "../../api/axiosInstance";
 import { ExportButton } from "../../components/shared/ExportButton";
+import { formatCurrency, formatDate, formatKg } from "../../utils/formatters";
 import { downloadCsv } from "../../utils/downloads";
 
-function downloadReport(report) {
-  const slug = report.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  downloadCsv(`${slug}-report.csv`, [{ report, generated_at: new Date().toISOString() }], [
-    { label: "Report", key: "report" },
-    { label: "Generated At", key: "generated_at" },
-  ]);
+function listResults(response) {
+  if (Array.isArray(response)) return response;
+  return response?.results || [];
+}
+
+function nextPath(response) {
+  if (!response?.next) return "";
+  try {
+    const url = new URL(response.next);
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return "";
+  }
+}
+
+async function fetchAll(path) {
+  const rows = [];
+  let next = path;
+
+  while (next) {
+    const response = await apiClient.get(next);
+    rows.push(...listResults(response));
+    next = nextPath(response);
+    if (Array.isArray(response)) next = "";
+  }
+
+  return rows;
+}
+
+const reports = [
+  {
+    key: "members-register",
+    title: "Members register",
+    description: "Registered and unregistered cooperative members with profile and login status.",
+    filename: "members-register.csv",
+    path: "/api/members/?ordering=membership_number",
+    columns: [
+      { label: "Membership No.", value: (row) => row.membership_number || "" },
+      { label: "Name", value: (row) => row.full_name || "" },
+      { label: "National ID", value: (row) => row.national_id || "" },
+      { label: "Phone", value: (row) => row.phone_number || "" },
+      { label: "Farm Size Acres", value: (row) => row.farm_size_acres || "" },
+      { label: "Location", value: (row) => row.location || "" },
+      { label: "Member Status", value: (row) => row.status || "" },
+      { label: "Account Status", value: (row) => row.user ? "Registered" : "Unregistered" },
+      { label: "Username", value: (row) => row.username || "" },
+    ],
+  },
+  {
+    key: "season-deliveries",
+    title: "Season deliveries",
+    description: "All recorded member deliveries with season, collection point, grade, and weight.",
+    filename: "season-deliveries.csv",
+    path: "/api/deliveries/?ordering=-delivery_date",
+    columns: [
+      { label: "Date", value: (row) => formatDate(row.delivery_date) },
+      { label: "Membership No.", value: (row) => row.membership_number || "" },
+      { label: "Member Name", value: (row) => row.member_name || "" },
+      { label: "Season", value: (row) => row.season_name || "" },
+      { label: "Collection Point", value: (row) => row.collection_point_name || "" },
+      { label: "Grade", value: (row) => row.grade_display || row.grade || "" },
+      { label: "Weight Kg", value: (row) => row.weight_kg || "0.00" },
+      { label: "Recorded By", value: (row) => row.recorded_by_username || "" },
+    ],
+  },
+  {
+    key: "loan-deductions",
+    title: "Loan deductions",
+    description: "Loan applications and recoverable deduction amounts for payout processing.",
+    filename: "loan-deductions.csv",
+    path: "/api/loans/?ordering=-requested_on",
+    columns: [
+      { label: "Date", value: (row) => formatDate(row.requested_on) },
+      { label: "Membership No.", value: (row) => row.membership_number || "" },
+      { label: "Member Name", value: (row) => row.member_name || "" },
+      { label: "Season", value: (row) => row.season_name || "" },
+      { label: "Loan Type", value: (row) => row.loan_type_display || row.loan_type || "" },
+      { label: "Amount Requested", value: (row) => row.amount || "0.00" },
+      { label: "Eligible Amount", value: (row) => row.eligible_amount || "0.00" },
+      { label: "Interest", value: (row) => row.estimated_interest || "0.00" },
+      { label: "Recovery Deduction", value: (row) => row.recovery_amount || "0.00" },
+      { label: "Status", value: (row) => row.status_display || row.status || "" },
+      { label: "Guarantor", value: (row) => row.guarantor_name || "" },
+    ],
+  },
+  {
+    key: "payout-schedule",
+    title: "Payout schedule",
+    description: "Generated payout schedule with gross, deductions, and net payable amounts.",
+    filename: "payout-schedule.csv",
+    path: "/api/payouts/?ordering=-created_at",
+    columns: [
+      { label: "Membership No.", value: (row) => row.membership_number || "" },
+      { label: "Member Name", value: (row) => row.member_name || "" },
+      { label: "Season", value: (row) => row.season_name || "" },
+      { label: "Delivered Kg", value: (row) => row.delivered_kg || "0.00" },
+      { label: "Gross Share", value: (row) => row.gross_share || "0.00" },
+      { label: "Loan Deductions", value: (row) => row.loan_deductions || "0.00" },
+      { label: "Other Deductions", value: (row) => row.other_deductions || "0.00" },
+      { label: "Net Payable", value: (row) => row.net_payable || "0.00" },
+      { label: "Generated By", value: (row) => row.generated_by_username || "" },
+    ],
+  },
+];
+
+function reportSummary(report, rows) {
+  if (report.key === "members-register") {
+    const registered = rows.filter((row) => row.user).length;
+    return `${rows.length} members, ${registered} registered, ${rows.length - registered} unregistered`;
+  }
+  if (report.key === "season-deliveries") {
+    const totalKg = rows.reduce((sum, row) => sum + Number(row.weight_kg || 0), 0);
+    return `${rows.length} deliveries, ${formatKg(totalKg)}`;
+  }
+  if (report.key === "loan-deductions") {
+    const totalRecovery = rows.reduce((sum, row) => sum + Number(row.recovery_amount || 0), 0);
+    return `${rows.length} loans, ${formatCurrency(totalRecovery)} recovery`;
+  }
+  if (report.key === "payout-schedule") {
+    const totalNet = rows.reduce((sum, row) => sum + Number(row.net_payable || 0), 0);
+    return `${rows.length} payouts, ${formatCurrency(totalNet)} net`;
+  }
+  return `${rows.length} records`;
 }
 
 export function ReportsPage() {
+  const [status, setStatus] = useState("");
+  const [activeReport, setActiveReport] = useState("");
+
+  async function downloadReport(report) {
+    setStatus("");
+    setActiveReport(report.key);
+    try {
+      const rows = await fetchAll(report.path);
+      downloadCsv(report.filename, rows, report.columns);
+      setStatus(`${report.title} downloaded: ${reportSummary(report, rows)}.`);
+    } catch (err) {
+      setStatus(err.message || `Unable to download ${report.title}.`);
+    } finally {
+      setActiveReport("");
+    }
+  }
+
   return (
-    <div className="report-grid">
-      {["Members register", "Season deliveries", "Loan deductions", "Payout schedule"].map((report) => (
-        <article className="panel report-card" key={report}>
-          <BarChart3 size={24} />
-          <h2>{report}</h2>
-          <p>Generate and export operational records for audit and management review.</p>
-          <ExportButton onClick={() => downloadReport(report)}>Download</ExportButton>
-        </article>
-      ))}
+    <div className="page-stack">
+      {status && <div className={status.includes("Unable") ? "form-error" : "form-success"}>{status}</div>}
+      <div className="report-grid">
+        {reports.map((report) => (
+          <article className="panel report-card" key={report.key}>
+            <BarChart3 size={24} />
+            <h2>{report.title}</h2>
+            <p>{report.description}</p>
+            <ExportButton onClick={() => downloadReport(report)} disabled={activeReport === report.key}>
+              {activeReport === report.key ? "Preparing..." : "Download"}
+            </ExportButton>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }
