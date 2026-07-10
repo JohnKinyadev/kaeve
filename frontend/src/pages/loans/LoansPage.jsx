@@ -261,7 +261,7 @@ export function LoansPage() {
                   </>
                 )}
                 {canReview && ["approved", "rejected"].includes(row.status) && (
-                  <Button variant="ghost" onClick={() => setAction({ type: "Reopen", row })}>Correct</Button>
+                  <Button variant="ghost" onClick={() => setAction({ type: "Reopen", row })}>Edit</Button>
                 )}
               </div>
             )

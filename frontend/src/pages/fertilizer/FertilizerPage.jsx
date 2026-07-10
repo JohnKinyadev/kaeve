@@ -193,7 +193,7 @@ export function FertilizerPage() {
                 <X size={16} /> Reject
               </Button>
               <Button variant="ghost" disabled={row.status === "pending"} onClick={() => reviewRequest(row.id, "reopen")}>
-                Correct
+                Edit
               </Button>
             </div>
           )}
