@@ -16,6 +16,8 @@ router.register("announcements", views.AnnouncementViewSet)
 router.register("fertilizer-inventory", views.FertilizerInventoryViewSet)
 router.register("fertilizer-requests", views.FertilizerRequestViewSet)
 router.register("loans", views.LoanViewSet)
+router.register("mpesa-transactions", views.MpesaTransactionViewSet)
+router.register("loan-repayments", views.LoanRepaymentViewSet)
 router.register("sale-proceeds", views.SaleProceedViewSet)
 router.register("payouts", views.PayoutViewSet)
 router.register("ledger-entries", views.LedgerEntryViewSet)
@@ -37,6 +39,7 @@ urlpatterns = [
     path("active-collection-points/", views.collection_points, name="active-collection-points"),
     path("seasons/<int:season_id>/intake-report/", views.season_intake_report, name="season-intake-report"),
     path("seasons/<int:season_id>/generate-payouts/", views.generate_payouts, name="generate-payouts"),
+    path("payments/mpesa/stk-callback/", views.mpesa_stk_callback, name="mpesa-stk-callback"),
     path(
         "members/<int:member_id>/seasons/<int:season_id>/payout-statement/",
         views.payout_statement,

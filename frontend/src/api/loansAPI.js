@@ -10,4 +10,5 @@ export const loansAPI = {
   approve: (id) => apiClient.post(`/api/loans/${id}/approve/`, {}),
   reject: (id, reason) => apiClient.post(`/api/loans/${id}/reject/`, { reason }),
   reopen: (id) => apiClient.post(`/api/loans/${id}/reopen/`, {}),
+  repayMpesa: (id, payload) => apiClient.post(`/api/loans/${id}/repay-mpesa/`, payload),
 };

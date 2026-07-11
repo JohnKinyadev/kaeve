@@ -32,8 +32,10 @@ from .models import (
     LedgerEntry,
     Loan,
     LoanPolicy,
+    LoanRepayment,
     Member,
     MillingBatch,
+    MpesaTransaction,
     Payout,
     SaleProceed,
     Season,
@@ -58,15 +60,18 @@ from .serializers import (
     InventoryStockSerializer,
     LedgerEntrySerializer,
     LoanPolicySerializer,
+    LoanRepaymentSerializer,
     LoanSerializer,
     MemberSerializer,
     MillingBatchSerializer,
+    MpesaTransactionSerializer,
     PayoutSerializer,
     PayoutStatementSerializer,
     SaleProceedSerializer,
     SeasonSerializer,
     UserProfileSerializer,
 )
+from .mpesa import initiate_loan_repayment, record_stk_callback
 from .services import (
     approve_loan,
     calculate_loan_eligibility,
@@ -323,7 +328,15 @@ class RoleScopedModelViewSet(viewsets.ModelViewSet):
         model_name = queryset.model._meta.model_name
         if model_name == "member":
             return queryset.filter(user=self.request.user)
-        if model_name in {"delivery", "loan", "payout", "ledgerentry", "fertilizerrequest"}:
+        if model_name in {
+            "delivery",
+            "loan",
+            "payout",
+            "ledgerentry",
+            "fertilizerrequest",
+            "mpesatransaction",
+            "loanrepayment",
+        }:
             return queryset.filter(member__user=self.request.user)
         if model_name == "fertilizerinventory":
             return queryset.filter(is_active=True)
@@ -597,7 +610,7 @@ class FertilizerRequestViewSet(RoleScopedModelViewSet):
 
 
 class LoanViewSet(RoleScopedModelViewSet):
-    queryset = Loan.objects.select_related("member", "season", "reviewed_by").all()
+    queryset = Loan.objects.select_related("member", "season", "reviewed_by", "guarantor").all()
     serializer_class = LoanSerializer
     search_fields = ["member__membership_number", "member__full_name", "reason"]
     ordering_fields = ["requested_on", "amount", "status", "created_at"]
@@ -663,6 +676,29 @@ class LoanViewSet(RoleScopedModelViewSet):
         loan.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
         sync_loan_ledger_entry(loan)
         return Response(self.get_serializer(loan).data)
+
+    @action(detail=True, methods=["post"], url_path="repay-mpesa")
+    def repay_mpesa(self, request, pk=None):
+        if get_user_role(request.user) != MEMBER_ROLE:
+            raise ValidationError({"detail": "Only members can initiate M-Pesa loan repayments."})
+
+        member = getattr(request.user, "member_profile", None)
+        if member is None:
+            raise ValidationError({"detail": "Complete your member profile before repaying a loan."})
+
+        loan = self.get_object()
+        try:
+            transaction_record = initiate_loan_repayment(
+                loan=loan,
+                member=member,
+                phone_number=request.data.get("phone_number") or member.phone_number,
+                amount=request.data.get("amount"),
+                initiated_by=request.user,
+            )
+        except ValueError as exc:
+            raise ValidationError({"detail": str(exc)}) from exc
+
+        return Response(MpesaTransactionSerializer(transaction_record).data, status=201)
 
     @action(detail=False, methods=["get"])
     def eligibility(self, request):
@@ -771,6 +807,36 @@ class LedgerEntryViewSet(RoleScopedModelViewSet):
     search_fields = ["member__membership_number", "member__full_name", "description", "reference"]
     ordering_fields = ["entry_type", "amount", "weight_kg", "created_at"]
     exact_filter_fields = ["member", "season", "entry_type"]
+
+
+class MpesaTransactionViewSet(RoleScopedModelViewSet):
+    queryset = MpesaTransaction.objects.select_related("member", "loan", "initiated_by").all()
+    serializer_class = MpesaTransactionSerializer
+    http_method_names = ["get", "head", "options"]
+    search_fields = ["member__membership_number", "member__full_name", "phone_number", "mpesa_receipt_number"]
+    ordering_fields = ["amount", "status", "paid_at", "created_at"]
+    exact_filter_fields = ["member", "loan", "status"]
+
+
+class LoanRepaymentViewSet(RoleScopedModelViewSet):
+    queryset = LoanRepayment.objects.select_related("member", "loan", "transaction").all()
+    serializer_class = LoanRepaymentSerializer
+    http_method_names = ["get", "head", "options"]
+    search_fields = ["member__membership_number", "member__full_name", "reference"]
+    ordering_fields = ["amount", "method", "paid_at", "created_at"]
+    exact_filter_fields = ["member", "loan", "method"]
+
+
+@csrf_exempt
+@require_POST
+def mpesa_stk_callback(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ResultCode": 1, "ResultDesc": "Invalid JSON body."}, status=400)
+
+    record_stk_callback(payload)
+    return JsonResponse({"ResultCode": 0, "ResultDesc": "Accepted"})
 
 
 @csrf_exempt

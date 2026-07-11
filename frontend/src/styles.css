@@ -734,6 +734,19 @@ th {
   max-width: 780px;
 }
 
+.loan-member-stack,
+.mpesa-repayment-card {
+  display: grid;
+  gap: 18px;
+}
+
+.mpesa-repayment-card {
+  background: #f7fee7;
+  border: 1px solid #d9f99d;
+  border-radius: 10px;
+  padding: 16px;
+}
+
 .loan-policy-summary {
   background: #ecfdf5;
   border: 1px solid #bbf7d0;

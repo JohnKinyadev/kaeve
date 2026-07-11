@@ -4,7 +4,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from .models import Delivery, InventoryStock, LedgerEntry, Loan, LoanPolicy, Payout, SaleProceed
+from .models import Delivery, InventoryStock, LedgerEntry, Loan, LoanPolicy, LoanRepayment, Payout, SaleProceed
 
 
 MONEY_PLACES = Decimal("0.01")
@@ -94,7 +94,15 @@ def get_approved_loan_recovery_total(member_id, season):
         season=season,
         status__in=[Loan.Status.APPROVED, Loan.Status.DEDUCTED],
     )
-    return money(sum((loan.recovery_amount for loan in loans), Decimal("0")))
+    return money(sum((get_loan_outstanding_amount(loan) for loan in loans), Decimal("0")))
+
+
+def get_loan_repayment_total(loan):
+    return money(LoanRepayment.objects.filter(loan=loan).aggregate(total=Sum("amount"))["total"] or Decimal("0"))
+
+
+def get_loan_outstanding_amount(loan):
+    return money(max(loan.recovery_amount - get_loan_repayment_total(loan), Decimal("0")))
 
 
 def update_inventory_quantity(season, stock_type, warehouse, delta_kg):

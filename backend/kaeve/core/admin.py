@@ -11,8 +11,10 @@ from .models import (
     InventoryStock,
     LedgerEntry,
     Loan,
+    LoanRepayment,
     Member,
     MillingBatch,
+    MpesaTransaction,
     Payout,
     SaleProceed,
     Season,
@@ -99,6 +101,27 @@ class LoanAdmin(RoleBasedAdminMixin, admin.ModelAdmin):
     list_display = ("member", "season", "amount", "status", "requested_on", "reviewed_by")
     list_filter = ("season", "status", "requested_on")
     search_fields = ("member__full_name", "member__membership_number")
+
+
+@admin.register(MpesaTransaction)
+class MpesaTransactionAdmin(RoleBasedAdminMixin, admin.ModelAdmin):
+    list_display = ("account_reference", "member", "loan", "amount", "phone_number", "status", "created_at")
+    list_filter = ("status", "created_at")
+    search_fields = (
+        "member__full_name",
+        "member__membership_number",
+        "phone_number",
+        "checkout_request_id",
+        "mpesa_receipt_number",
+    )
+    readonly_fields = ("raw_request", "raw_response", "raw_callback", "created_at", "updated_at")
+
+
+@admin.register(LoanRepayment)
+class LoanRepaymentAdmin(RoleBasedAdminMixin, admin.ModelAdmin):
+    list_display = ("member", "loan", "amount", "method", "reference", "paid_at")
+    list_filter = ("method", "paid_at")
+    search_fields = ("member__full_name", "member__membership_number", "reference")
 
 
 @admin.register(SaleProceed)

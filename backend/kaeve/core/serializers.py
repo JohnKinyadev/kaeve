@@ -15,8 +15,10 @@ from .models import (
     LedgerEntry,
     Loan,
     LoanPolicy,
+    LoanRepayment,
     Member,
     MillingBatch,
+    MpesaTransaction,
     Payout,
     SaleProceed,
     Season,
@@ -29,6 +31,8 @@ from .services import (
     get_active_loan_policy,
     member_last_12_month_delivery_kg,
     get_approved_loan_recovery_total,
+    get_loan_outstanding_amount,
+    get_loan_repayment_total,
     money,
 )
 
@@ -534,6 +538,8 @@ class LoanSerializer(CleanModelSerializer):
     last_12_month_delivery_kg = serializers.SerializerMethodField()
     estimated_interest = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     recovery_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    repayment_total = serializers.SerializerMethodField()
+    outstanding_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Loan
@@ -563,6 +569,8 @@ class LoanSerializer(CleanModelSerializer):
             "term_months",
             "estimated_interest",
             "recovery_amount",
+            "repayment_total",
+            "outstanding_amount",
             "reason",
             "guarantor_details",
             "collateral_details",
@@ -600,6 +608,12 @@ class LoanSerializer(CleanModelSerializer):
 
     def get_last_12_month_delivery_kg(self, obj):
         return str(member_last_12_month_delivery_kg(obj.member))
+
+    def get_repayment_total(self, obj):
+        return str(get_loan_repayment_total(obj))
+
+    def get_outstanding_amount(self, obj):
+        return str(get_loan_outstanding_amount(obj))
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -694,6 +708,56 @@ class LoanSerializer(CleanModelSerializer):
                 )
 
         return attrs
+
+
+class MpesaTransactionSerializer(serializers.ModelSerializer):
+    loan_status = serializers.CharField(source="loan.status", read_only=True)
+    member_name = serializers.CharField(source="member.full_name", read_only=True)
+
+    class Meta:
+        model = MpesaTransaction
+        fields = [
+            "id",
+            "member",
+            "member_name",
+            "loan",
+            "loan_status",
+            "phone_number",
+            "amount",
+            "account_reference",
+            "merchant_request_id",
+            "checkout_request_id",
+            "mpesa_receipt_number",
+            "result_code",
+            "result_description",
+            "status",
+            "paid_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class LoanRepaymentSerializer(serializers.ModelSerializer):
+    member_name = serializers.CharField(source="member.full_name", read_only=True)
+    loan_status = serializers.CharField(source="loan.status", read_only=True)
+
+    class Meta:
+        model = LoanRepayment
+        fields = [
+            "id",
+            "member",
+            "member_name",
+            "loan",
+            "loan_status",
+            "amount",
+            "method",
+            "reference",
+            "paid_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
 
 
 class SaleProceedSerializer(CleanModelSerializer):

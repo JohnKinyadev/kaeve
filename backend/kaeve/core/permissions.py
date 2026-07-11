@@ -85,6 +85,8 @@ class RoleBasedAdminMixin:
             "loan": {"view", "add"},
             "payout": {"view"},
             "ledgerentry": {"view"},
+            "mpesatransaction": {"view"},
+            "loanrepayment": {"view"},
             "announcement": {"view"},
             "fertilizerinventory": {"view"},
             "fertilizerrequest": {"view"},
@@ -96,6 +98,8 @@ class RoleBasedAdminMixin:
             "loan": {"view", "add"},
             "payout": {"view"},
             "ledgerentry": {"view"},
+            "mpesatransaction": {"view"},
+            "loanrepayment": {"view"},
             "announcement": {"view"},
             "fertilizerinventory": {"view"},
             "fertilizerrequest": {"view", "add"},
@@ -142,7 +146,7 @@ class RoleBasedAdminMixin:
         model_name = self.get_model_name()
         if model_name == "member":
             return queryset.filter(user=request.user)
-        if model_name in {"delivery", "loan", "payout", "ledgerentry"}:
+        if model_name in {"delivery", "loan", "payout", "ledgerentry", "mpesatransaction", "loanrepayment"}:
             return queryset.filter(member__user=request.user)
         return queryset.none()
 
@@ -168,6 +172,8 @@ class RoleBasedApiPermission(BasePermission):
             "loan": {"view", "add"},
             "payout": {"view"},
             "ledgerentry": {"view"},
+            "mpesatransaction": {"view"},
+            "loanrepayment": {"view"},
             "announcement": {"view"},
             "fertilizerinventory": {"view"},
             "fertilizerrequest": {"view"},
@@ -179,6 +185,8 @@ class RoleBasedApiPermission(BasePermission):
             "loan": {"view", "add"},
             "payout": {"view"},
             "ledgerentry": {"view"},
+            "mpesatransaction": {"view"},
+            "loanrepayment": {"view"},
             "announcement": {"view"},
             "fertilizerinventory": {"view"},
             "fertilizerrequest": {"view", "add"},
@@ -196,6 +204,7 @@ class RoleBasedApiPermission(BasePermission):
         "reject": "change",
         "apply": "add",
         "reopen": "change",
+        "repay_mpesa": "view",
     }
 
     def has_permission(self, request, view):

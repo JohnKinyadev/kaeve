@@ -447,6 +447,81 @@ class Loan(TimeStampedModel):
         return f"{self.member} - {self.amount} ({self.status})"
 
 
+class MpesaTransaction(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        SUCCESS = "success", "Success"
+        FAILED = "failed", "Failed"
+
+    member = models.ForeignKey(Member, on_delete=models.PROTECT, related_name="mpesa_transactions")
+    loan = models.ForeignKey(Loan, on_delete=models.PROTECT, related_name="mpesa_transactions")
+    initiated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="initiated_mpesa_transactions",
+    )
+    phone_number = models.CharField(max_length=20)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    account_reference = models.CharField(max_length=40)
+    description = models.CharField(max_length=120, blank=True)
+    merchant_request_id = models.CharField(max_length=120, blank=True)
+    checkout_request_id = models.CharField(max_length=120, unique=True, null=True, blank=True)
+    mpesa_receipt_number = models.CharField(max_length=80, blank=True)
+    result_code = models.CharField(max_length=20, blank=True)
+    result_description = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    raw_request = models.JSONField(default=dict, blank=True)
+    raw_response = models.JSONField(default=dict, blank=True)
+    raw_callback = models.JSONField(default=dict, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["checkout_request_id"]),
+            models.Index(fields=["member", "status"]),
+            models.Index(fields=["loan", "status"]),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name="mpesa_transaction_amount_positive"),
+        ]
+
+    def __str__(self):
+        return f"{self.account_reference} - {self.amount} ({self.status})"
+
+
+class LoanRepayment(TimeStampedModel):
+    class Method(models.TextChoices):
+        MPESA = "mpesa", "M-Pesa"
+        MANUAL = "manual", "Manual"
+        PAYOUT_DEDUCTION = "payout_deduction", "Payout Deduction"
+
+    member = models.ForeignKey(Member, on_delete=models.PROTECT, related_name="loan_repayments")
+    loan = models.ForeignKey(Loan, on_delete=models.PROTECT, related_name="repayments")
+    transaction = models.OneToOneField(
+        MpesaTransaction,
+        on_delete=models.PROTECT,
+        related_name="repayment",
+        null=True,
+        blank=True,
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    method = models.CharField(max_length=30, choices=Method.choices, default=Method.MPESA)
+    reference = models.CharField(max_length=80, blank=True)
+    paid_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-paid_at", "-created_at"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name="loan_repayment_amount_positive"),
+        ]
+
+    def __str__(self):
+        return f"{self.member} - {self.loan_id} - {self.amount}"
+
+
 class SaleProceed(TimeStampedModel):
     season = models.ForeignKey(Season, on_delete=models.PROTECT, related_name="sale_proceeds")
     buyer = models.CharField(max_length=160)

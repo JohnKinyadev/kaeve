@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Banknote, Download, Megaphone, Package, Scale, WalletCards } from "lucide-react";
+import { Banknote, Download, Megaphone, Package, Scale, Smartphone, WalletCards } from "lucide-react";
 
 import { announcementsAPI } from "../../api/announcementsAPI";
 import { Button } from "../../components/ui/Button";
@@ -56,13 +56,17 @@ export function MemberPortalPage({ initialTab = "overview" }) {
   const [guarantorNotice, setGuarantorNotice] = useState("");
   const [selectedGuarantorLabel, setSelectedGuarantorLabel] = useState("");
   const [fertilizerForm, setFertilizerForm] = useState({ inventory: "", requested_kg: "", reason: "" });
+  const [repaymentForm, setRepaymentForm] = useState({ loan: "", amount: "", phone_number: "" });
   const [loanMessage, setLoanMessage] = useState("");
   const [loanError, setLoanError] = useState("");
+  const [repaymentMessage, setRepaymentMessage] = useState("");
+  const [repaymentError, setRepaymentError] = useState("");
   const [fertilizerMessage, setFertilizerMessage] = useState("");
   const [fertilizerError, setFertilizerError] = useState("");
   const [profileError, setProfileError] = useState("");
   const [isCompletingProfile, setIsCompletingProfile] = useState(false);
   const [isApplyingLoan, setIsApplyingLoan] = useState(false);
+  const [isInitiatingRepayment, setIsInitiatingRepayment] = useState(false);
   const [isRequestingFertilizer, setIsRequestingFertilizer] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const member = user?.member;
@@ -127,6 +131,27 @@ export function MemberPortalPage({ initialTab = "overview" }) {
       setFertilizerError(err.message || "Unable to submit fertilizer request");
     } finally {
       setIsRequestingFertilizer(false);
+    }
+  }
+
+  async function handleMpesaRepayment(event) {
+    event.preventDefault();
+    setRepaymentError("");
+    setRepaymentMessage("");
+    setIsInitiatingRepayment(true);
+
+    try {
+      const response = await loansAPI.repayMpesa(repaymentForm.loan, {
+        amount: repaymentForm.amount,
+        phone_number: repaymentForm.phone_number,
+      });
+      setRepaymentForm((value) => ({ ...value, amount: "" }));
+      setRepaymentMessage(response.result_description || "M-Pesa prompt sent. Enter your PIN on your phone to complete repayment.");
+      setReloadKey((value) => value + 1);
+    } catch (err) {
+      setRepaymentError(err.message || "Unable to initiate M-Pesa repayment.");
+    } finally {
+      setIsInitiatingRepayment(false);
     }
   }
 
@@ -289,6 +314,12 @@ export function MemberPortalPage({ initialTab = "overview" }) {
   const activeLoan = loans[0];
   const latestPayout = payouts[0];
   const needsProfile = !member;
+  const repayableLoans = useMemo(
+    () => loans.filter((loan) => loan.status === "approved" && Number(loan.outstanding_amount || 0) > 0),
+    [loans],
+  );
+  const selectedRepaymentLoan = repayableLoans.find((loan) => String(loan.id) === String(repaymentForm.loan)) || repayableLoans[0];
+  const selectedOutstandingAmount = Number(selectedRepaymentLoan?.outstanding_amount || 0);
   const usesFutureHarvest = loanForm.collateral_type === "future_harvest";
   const eligibleAmount = Number(eligibility?.eligible_amount || 0);
   const existingActiveLoanAmount = Number(eligibility?.existing_active_loan_amount || 0);
@@ -302,6 +333,17 @@ export function MemberPortalPage({ initialTab = "overview" }) {
     .filter((request) => ["pending", "approved"].includes(request.status))
     .reduce((sum, request) => sum + Number(request.requested_kg || 0), 0);
   const remainingFertilizerKg = Math.max(fertilizerCapKg - alreadyRequestedFertilizerKg, 0);
+
+  useEffect(() => {
+    if (!member) return;
+    setRepaymentForm((value) => ({
+      ...value,
+      phone_number: value.phone_number || member.phone_number || "",
+      loan: repayableLoans.some((loan) => String(loan.id) === String(value.loan))
+        ? value.loan
+        : String(repayableLoans[0]?.id || ""),
+    }));
+  }, [member, repayableLoans]);
 
   return (
     <main className="portal-screen role-member">
@@ -409,7 +451,8 @@ export function MemberPortalPage({ initialTab = "overview" }) {
               <p>Your member profile is required before you can submit a loan application.</p>
             </div>
           ) : (
-            <form className="form-grid" onSubmit={handleLoanSubmit}>
+            <div className="loan-member-stack">
+              <form className="form-grid" onSubmit={handleLoanSubmit}>
               {loanPolicy && (
                 <div className="loan-policy-summary field-wide">
                   <span>Advance rate: {formatCurrency(Number(loanPolicy.advance_rate_per_kg || 0))}/kg</span>
@@ -548,7 +591,69 @@ export function MemberPortalPage({ initialTab = "overview" }) {
                   {isApplyingLoan ? "Submitting..." : "Submit application"}
                 </Button>
               </div>
-            </form>
+              </form>
+              <section className="mpesa-repayment-card">
+                <div className="panel-header">
+                  <div>
+                    <h2>Repay approved loan</h2>
+                    <span>Send an M-Pesa prompt to offset your balance before payout deductions.</span>
+                  </div>
+                  <Smartphone size={22} />
+                </div>
+                {repayableLoans.length === 0 ? (
+                  <div className="empty-state">
+                    <h2>No approved loan to repay</h2>
+                    <p>Approved loans with an outstanding balance will appear here.</p>
+                  </div>
+                ) : (
+                  <form className="form-grid" onSubmit={handleMpesaRepayment}>
+                    <label className="field field-wide">
+                      <span>Approved loan</span>
+                      <select
+                        value={repaymentForm.loan}
+                        onChange={(event) => setRepaymentForm((value) => ({ ...value, loan: event.target.value, amount: "" }))}
+                        required
+                      >
+                        {repayableLoans.map((loan) => (
+                          <option key={loan.id} value={loan.id}>
+                            {loan.loan_type_display || loan.loan_type} - outstanding {formatCurrency(Number(loan.outstanding_amount || 0))}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="loan-policy-summary field-wide">
+                      <span>Recovery: {formatCurrency(Number(selectedRepaymentLoan?.recovery_amount || 0))}</span>
+                      <span>Already paid: {formatCurrency(Number(selectedRepaymentLoan?.repayment_total || 0))}</span>
+                      <span>Outstanding: {formatCurrency(selectedOutstandingAmount)}</span>
+                    </div>
+                    <Input
+                      label="Amount"
+                      type="number"
+                      min="1"
+                      max={selectedOutstandingAmount || undefined}
+                      step="1"
+                      value={repaymentForm.amount}
+                      onChange={(event) => setRepaymentForm((value) => ({ ...value, amount: event.target.value }))}
+                      required
+                    />
+                    <Input
+                      label="M-Pesa phone number"
+                      value={repaymentForm.phone_number}
+                      onChange={(event) => setRepaymentForm((value) => ({ ...value, phone_number: event.target.value }))}
+                      placeholder="0712345678"
+                      required
+                    />
+                    {repaymentError && <div className="form-error field-wide">{repaymentError}</div>}
+                    {repaymentMessage && <div className="form-success field-wide">{repaymentMessage}</div>}
+                    <div className="form-actions">
+                      <Button type="submit" disabled={isInitiatingRepayment || !repaymentForm.loan || selectedOutstandingAmount <= 0}>
+                        {isInitiatingRepayment ? "Sending prompt..." : "Send M-Pesa prompt"}
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </section>
+            </div>
           )}
         </article>
       )}
