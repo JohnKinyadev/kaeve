@@ -32,6 +32,7 @@ urlpatterns = [
     path("auth/logout/", views.logout, name="logout"),
     path("auth/me/", views.me, name="me"),
     path("auth/complete-member-profile/", views.complete_member_profile, name="complete-member-profile"),
+    path("auth/update-login-credentials/", views.update_login_credentials, name="update-login-credentials"),
     path("loan-policy/current/", views.current_loan_policy, name="current-loan-policy"),
     path("members/guarantor-search/", views.guarantor_search, name="guarantor-search"),
     path("health/", views.health_check, name="health-check"),

@@ -6,4 +6,5 @@ export const authAPI = {
   refresh: (refresh) => apiClient.post("/api/auth/refresh/", { refresh }),
   me: () => apiClient.get("/api/auth/me/"),
   completeMemberProfile: (payload) => apiClient.post("/api/auth/complete-member-profile/", payload),
+  updateLoginCredentials: (payload) => apiClient.post("/api/auth/update-login-credentials/", payload),
 };

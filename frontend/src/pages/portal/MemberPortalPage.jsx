@@ -31,12 +31,16 @@ export function MemberPortalPage({ initialTab = "overview" }) {
   const [fertilizerRequests, setFertilizerRequests] = useState([]);
   const [error, setError] = useState("");
   const [profileForm, setProfileForm] = useState({
+    username: user?.username || "",
     full_name: "",
     national_id: "",
     phone_number: "",
     farm_size_acres: "",
     location: "",
+    password: "",
+    confirm_password: "",
   });
+  const [loginForm, setLoginForm] = useState({ username: user?.username || "", password: "", confirm_password: "" });
   const [loanForm, setLoanForm] = useState({
     loan_type: "cherry_advance",
     proof_type: "delivery_history",
@@ -64,7 +68,10 @@ export function MemberPortalPage({ initialTab = "overview" }) {
   const [fertilizerMessage, setFertilizerMessage] = useState("");
   const [fertilizerError, setFertilizerError] = useState("");
   const [profileError, setProfileError] = useState("");
+  const [loginMessage, setLoginMessage] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [isCompletingProfile, setIsCompletingProfile] = useState(false);
+  const [isUpdatingLogin, setIsUpdatingLogin] = useState(false);
   const [isApplyingLoan, setIsApplyingLoan] = useState(false);
   const [isInitiatingRepayment, setIsInitiatingRepayment] = useState(false);
   const [isRequestingFertilizer, setIsRequestingFertilizer] = useState(false);
@@ -75,19 +82,52 @@ export function MemberPortalPage({ initialTab = "overview" }) {
     setActiveTab(initialTab);
   }, [initialTab]);
 
+  useEffect(() => {
+    setProfileForm((value) => ({ ...value, username: value.username || user?.username || "" }));
+    setLoginForm((value) => ({ ...value, username: value.username || user?.username || "" }));
+  }, [user?.username]);
+
   async function handleProfileSubmit(event) {
     event.preventDefault();
     setProfileError("");
+    if (profileForm.password && profileForm.password !== profileForm.confirm_password) {
+      setProfileError("Passwords do not match.");
+      return;
+    }
     setIsCompletingProfile(true);
 
     try {
-      await authAPI.completeMemberProfile(profileForm);
+      const { confirm_password, ...payload } = profileForm;
+      await authAPI.completeMemberProfile(payload);
       await refreshUser();
       setActiveTab("overview");
     } catch (err) {
       setProfileError(err.message || "Unable to complete member profile");
     } finally {
       setIsCompletingProfile(false);
+    }
+  }
+
+  async function handleLoginUpdate(event) {
+    event.preventDefault();
+    setLoginError("");
+    setLoginMessage("");
+    if (loginForm.password && loginForm.password !== loginForm.confirm_password) {
+      setLoginError("Passwords do not match.");
+      return;
+    }
+    setIsUpdatingLogin(true);
+
+    try {
+      const { confirm_password, ...payload } = loginForm;
+      await authAPI.updateLoginCredentials(payload);
+      await refreshUser();
+      setLoginForm((value) => ({ ...value, password: "", confirm_password: "" }));
+      setLoginMessage("Login credentials updated.");
+    } catch (err) {
+      setLoginError(err.message || "Unable to update login credentials.");
+    } finally {
+      setIsUpdatingLogin(false);
     }
   }
 
@@ -389,6 +429,30 @@ export function MemberPortalPage({ initialTab = "overview" }) {
             </div>
           </div>
           <form className="form-grid" onSubmit={handleProfileSubmit}>
+            <div className="loan-policy-note field-wide">
+              <strong>Login credentials</strong>
+              <span>Set a username and password if you want to sign in without Google on another device.</span>
+            </div>
+            <Input
+              label="Username"
+              autoComplete="username"
+              value={profileForm.username}
+              onChange={(event) => setProfileForm((value) => ({ ...value, username: event.target.value }))}
+            />
+            <Input
+              label="Password"
+              type="password"
+              autoComplete="new-password"
+              value={profileForm.password}
+              onChange={(event) => setProfileForm((value) => ({ ...value, password: event.target.value }))}
+            />
+            <Input
+              label="Confirm password"
+              type="password"
+              autoComplete="new-password"
+              value={profileForm.confirm_password}
+              onChange={(event) => setProfileForm((value) => ({ ...value, confirm_password: event.target.value }))}
+            />
             <Input
               label="Full name"
               value={profileForm.full_name}
@@ -431,9 +495,46 @@ export function MemberPortalPage({ initialTab = "overview" }) {
       )}
 
       {activeTab === "complete" && member && (
-        <article className="panel empty-state">
-          <h2>Registration complete</h2>
-          <p>Your profile is linked to membership number {member.membership_number}.</p>
+        <article className="panel form-panel member-completion-panel">
+          <div className="panel-header">
+            <div>
+              <h2>Registration complete</h2>
+              <span>Your profile is linked to membership number {member.membership_number}.</span>
+            </div>
+          </div>
+          <form className="form-grid" onSubmit={handleLoginUpdate}>
+            <div className="loan-policy-note field-wide">
+              <strong>Password sign-in</strong>
+              <span>Update these details when you want to sign in without Google.</span>
+            </div>
+            <Input
+              label="Username"
+              autoComplete="username"
+              value={loginForm.username}
+              onChange={(event) => setLoginForm((value) => ({ ...value, username: event.target.value }))}
+            />
+            <Input
+              label="New password"
+              type="password"
+              autoComplete="new-password"
+              value={loginForm.password}
+              onChange={(event) => setLoginForm((value) => ({ ...value, password: event.target.value }))}
+            />
+            <Input
+              label="Confirm password"
+              type="password"
+              autoComplete="new-password"
+              value={loginForm.confirm_password}
+              onChange={(event) => setLoginForm((value) => ({ ...value, confirm_password: event.target.value }))}
+            />
+            {loginError && <div className="form-error field-wide">{loginError}</div>}
+            {loginMessage && <div className="form-success field-wide">{loginMessage}</div>}
+            <div className="form-actions">
+              <Button type="submit" disabled={isUpdatingLogin}>
+                {isUpdatingLogin ? "Saving..." : "Update login"}
+              </Button>
+            </div>
+          </form>
         </article>
       )}
 

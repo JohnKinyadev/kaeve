@@ -16,6 +16,7 @@ const emptyForm = {
   member: "",
   season: "",
   delivered_kg: "",
+  loan_deductions: "0.00",
   other_deductions: "0.00",
 };
 
@@ -34,23 +35,33 @@ export function PayoutsPage() {
   const rows = getResults(payouts.data);
 
   useEffect(() => {
-    async function loadDeliveredKg() {
+    async function loadPayoutInputs() {
       const seasonId = form.season || selectedSeason;
       if (!isFormOpen || !form.member || !seasonId) {
-        setForm((current) => ({ ...current, delivered_kg: "" }));
+        setForm((current) => ({ ...current, delivered_kg: "", loan_deductions: "0.00" }));
         return;
       }
 
       try {
-        const response = await apiClient.get(`/api/deliveries/${toQueryString({ member: form.member, season: seasonId })}`);
-        const deliveredKg = getResults(response).reduce((sum, delivery) => sum + Number(delivery.weight_kg || 0), 0);
-        setForm((current) => ({ ...current, delivered_kg: deliveredKg.toFixed(2) }));
+        const [deliveryResponse, loanResponse] = await Promise.all([
+          apiClient.get(`/api/deliveries/${toQueryString({ member: form.member, season: seasonId })}`),
+          apiClient.get(`/api/loans/${toQueryString({ member: form.member, season: seasonId })}`),
+        ]);
+        const deliveredKg = getResults(deliveryResponse).reduce((sum, delivery) => sum + Number(delivery.weight_kg || 0), 0);
+        const loanDeductions = getResults(loanResponse)
+          .filter((loan) => ["approved", "deducted"].includes(loan.status))
+          .reduce((sum, loan) => sum + Number(loan.outstanding_amount ?? loan.recovery_amount ?? loan.amount ?? 0), 0);
+        setForm((current) => ({
+          ...current,
+          delivered_kg: deliveredKg.toFixed(2),
+          loan_deductions: loanDeductions.toFixed(2),
+        }));
       } catch (err) {
-        setMessage(err.message || "Unable to load member deliveries.");
+        setMessage(err.message || "Unable to load member payout details.");
       }
     }
 
-    loadDeliveredKg();
+    loadPayoutInputs();
   }, [form.member, form.season, isFormOpen, selectedSeason]);
 
   function updateForm(field, value) {
@@ -149,7 +160,18 @@ export function PayoutsPage() {
             <Input label="Delivered kg" type="number" step="0.01" value={form.delivered_kg} disabled required />
             <Input label="Payout rate per kg" type="number" step="0.01" value={payoutRate.toFixed(2)} disabled required />
             <Input label="Gross share" type="text" value={formatCurrency(Number(form.delivered_kg || 0) * payoutRate)} disabled />
+            <Input label="Loan deductions" type="text" value={formatCurrency(Number(form.loan_deductions || 0))} disabled />
             <Input label="Other deductions" type="number" step="0.01" value={form.other_deductions} onChange={(event) => updateForm("other_deductions", event.target.value)} />
+            <Input
+              label="Estimated net payout"
+              type="text"
+              value={formatCurrency(
+                Number(form.delivered_kg || 0) * payoutRate
+                  - Number(form.loan_deductions || 0)
+                  - Number(form.other_deductions || 0),
+              )}
+              disabled
+            />
             {payoutRate <= 0 && <div className="form-error field-wide">Set this season's payout rate before recording payouts.</div>}
             <div className="form-actions">
               <Button variant="secondary" onClick={() => setIsFormOpen(false)}>Cancel</Button>

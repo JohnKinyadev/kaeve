@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Factory } from "lucide-react";
 
 import { apiClient } from "../../api/axiosInstance";
@@ -21,6 +21,18 @@ const emptyForm = {
   notes: "",
 };
 
+function mergeBatchIntoData(data, batch) {
+  if (!batch) return data;
+  const rows = getResults(data);
+  const nextRows = [batch, ...rows.filter((row) => row.id !== batch.id)];
+  if (Array.isArray(data)) return nextRows;
+  return {
+    ...(data || {}),
+    count: data?.count ?? nextRows.length,
+    results: nextRows,
+  };
+}
+
 export function MillingPage() {
   const batches = useApiResource("/api/milling-batches/?ordering=-milled_on");
   const seasons = useApiResource("/api/seasons/?is_active=true&is_closed=false");
@@ -36,6 +48,13 @@ export function MillingPage() {
     [rows],
   );
   const outturn = totals.cherry ? ((totals.green / totals.cherry) * 100).toFixed(2) : "0.00";
+
+  useEffect(() => {
+    const activeSeason = getResults(seasons.data)[0];
+    if (!form.season && activeSeason?.id) {
+      setForm((current) => ({ ...current, season: String(activeSeason.id) }));
+    }
+  }, [form.season, seasons.data]);
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -62,11 +81,13 @@ export function MillingPage() {
     delete payload.id;
 
     try {
+      let savedBatch;
       if (form.id) {
-        await apiClient.patch(`/api/milling-batches/${form.id}/`, payload);
+        savedBatch = await apiClient.patch(`/api/milling-batches/${form.id}/`, payload);
       } else {
-        await apiClient.post("/api/milling-batches/", payload);
+        savedBatch = await apiClient.post("/api/milling-batches/", payload);
       }
+      batches.setData((current) => mergeBatchIntoData(current, savedBatch));
       setForm(emptyForm);
       setIsFormOpen(false);
       await batches.reload();

@@ -304,6 +304,26 @@ def create_user_account(payload, default_role=UserProfile.Role.MEMBER, allow_pri
     return user, None
 
 
+def update_user_login_credentials(user, payload):
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    update_fields = []
+
+    if username and username != user.username:
+        if get_user_model().objects.filter(username=username).exclude(id=user.id).exists():
+            return JsonResponse({"username": "Username is already taken."}, status=400)
+        user.username = username
+        update_fields.append("username")
+
+    if password:
+        user.set_password(password)
+        update_fields.append("password")
+
+    if update_fields:
+        user.save(update_fields=update_fields)
+    return None
+
+
 class RoleScopedModelViewSet(viewsets.ModelViewSet):
     permission_classes = [RoleBasedApiPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -1056,10 +1076,32 @@ def complete_member_profile(request):
     if not serializer.is_valid():
         return JsonResponse(serializer.errors, status=400)
 
+    credential_error = update_user_login_credentials(request.user, payload)
+    if credential_error:
+        return credential_error
+
     member = serializer.save(user=request.user)
     request.user.profile.phone_number = member.phone_number
     request.user.profile.save(update_fields=["phone_number", "updated_at"])
     return JsonResponse(user_payload(request.user), status=201)
+
+
+@csrf_exempt
+@require_POST
+@role_required(MEMBER_ROLE)
+def update_login_credentials(request):
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON body."}, status=400)
+
+    if not (payload.get("username") or payload.get("password")):
+        return JsonResponse({"detail": "Enter a username or password to update."}, status=400)
+
+    credential_error = update_user_login_credentials(request.user, payload)
+    if credential_error:
+        return credential_error
+    return JsonResponse(user_payload(request.user))
 
 
 @role_required(ADMIN_ROLE, MANAGER_ROLE, SECRETARY_ROLE, FIELD_OFFICER_ROLE, MEMBER_ROLE)
