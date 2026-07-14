@@ -27,7 +27,12 @@ export function DashboardPage() {
       {(summary.error || recent.error) && <div className="form-error">{summary.error || recent.error}</div>}
       <section className="stat-grid">
         <StatCard icon={Users} label="Total Members" value={summary.isLoading ? "..." : summaryData.members_count || 0} detail={summaryData.active_season || "No active season"} />
-        <StatCard icon={Scale} label="Season Cherry" value={summary.isLoading ? "..." : formatKg(Number(summaryData.season_cherry_kg || 0))} detail={`Today: ${formatKg(Number(summaryData.today_cherry_kg || 0))}`} />
+        <StatCard
+          icon={Scale}
+          label="Total Cherry"
+          value={summary.isLoading ? "..." : formatKg(Number(summaryData.total_cherry_kg || 0))}
+          detail={`${summaryData.active_season || "Active season"}: ${formatKg(Number(summaryData.season_cherry_kg || 0))}`}
+        />
         <StatCard icon={Banknote} label="Pending Loans" value={summary.isLoading ? "..." : summaryData.pending_loans || 0} detail={formatCurrency(Number(summaryData.approved_loan_total || 0))} />
         <StatCard icon={WalletCards} label="Deliveries" value={summary.isLoading ? "..." : summaryData.deliveries_count || 0} detail="Active season records" />
       </section>

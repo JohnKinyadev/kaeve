@@ -34,15 +34,18 @@ function mergeBatchIntoData(data, batch) {
 }
 
 export function MillingPage() {
-  const batches = useApiResource("/api/milling-batches/?ordering=-milled_on");
-  const seasons = useApiResource("/api/seasons/?is_active=true&is_closed=false");
-  const inventory = useApiResource("/api/inventory-stocks/?stock_type=cherry");
+  const [selectedSeason, setSelectedSeason] = useState("");
+  const batches = useApiResource(`/api/milling-batches/?ordering=-milled_on${selectedSeason ? `&season=${selectedSeason}` : ""}`);
+  const seasons = useApiResource("/api/seasons/?ordering=-start_date");
+  const inventory = useApiResource(`/api/inventory-stocks/?stock_type=cherry${selectedSeason ? `&season=${selectedSeason}` : ""}`);
   const [form, setForm] = useState(emptyForm);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [message, setMessage] = useState("");
+  const seasonRows = getResults(seasons.data);
+  const activeSeason = seasonRows.find((season) => season.is_active) || seasonRows[0];
   const rows = getResults(batches.data);
   const inventoryRows = getResults(inventory.data);
-  const selectedSeasonId = form.season || getResults(seasons.data)[0]?.id || "";
+  const selectedSeasonId = form.season || selectedSeason || activeSeason?.id || "";
   const selectedSeasonCherryAvailable = inventoryRows
     .filter((row) => String(row.season) === String(selectedSeasonId))
     .reduce((sum, row) => sum + Number(row.quantity_kg || 0), 0);
@@ -58,11 +61,16 @@ export function MillingPage() {
   const outturn = totals.cherry ? ((totals.green / totals.cherry) * 100).toFixed(2) : "0.00";
 
   useEffect(() => {
-    const activeSeason = getResults(seasons.data)[0];
-    if (!form.season && activeSeason?.id) {
-      setForm((current) => ({ ...current, season: String(activeSeason.id) }));
+    if (!selectedSeason && activeSeason?.id) {
+      setSelectedSeason(String(activeSeason.id));
     }
-  }, [form.season, seasons.data]);
+  }, [activeSeason, selectedSeason]);
+
+  useEffect(() => {
+    if (!form.season && selectedSeasonId) {
+      setForm((current) => ({ ...current, season: String(selectedSeasonId) }));
+    }
+  }, [form.season, selectedSeasonId]);
 
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -95,6 +103,7 @@ export function MillingPage() {
       } else {
         savedBatch = await apiClient.post("/api/milling-batches/", payload);
       }
+      setSelectedSeason(String(savedBatch.season));
       batches.setData((current) => mergeBatchIntoData(current, savedBatch));
       setForm(emptyForm);
       setIsFormOpen(false);
@@ -117,7 +126,13 @@ export function MillingPage() {
         <StatCard icon={Factory} label="Green Beans" value={formatKg(totals.green)} detail={`${outturn}% outturn`} />
       </section>
       <section className="toolbar">
-        <Button onClick={() => { setForm(emptyForm); setIsFormOpen((value) => !value); }}>Record Milling</Button>
+        <select value={selectedSeason} onChange={(event) => setSelectedSeason(event.target.value)}>
+          <option value="">Select season</option>
+          {seasonRows.map((season) => (
+            <option key={season.id} value={season.id}>{season.name}</option>
+          ))}
+        </select>
+        <Button onClick={() => { setForm({ ...emptyForm, season: selectedSeasonId ? String(selectedSeasonId) : "" }); setIsFormOpen((value) => !value); }}>Record Milling</Button>
       </section>
       {isFormOpen && (
         <article className="panel form-panel">
@@ -125,9 +140,16 @@ export function MillingPage() {
           <form className="form-grid" onSubmit={saveBatch}>
             <label className="field">
               <span>Season</span>
-              <select value={form.season} onChange={(event) => updateForm("season", event.target.value)} required>
+              <select
+                value={form.season}
+                onChange={(event) => {
+                  updateForm("season", event.target.value);
+                  setSelectedSeason(event.target.value);
+                }}
+                required
+              >
                 <option value="">Select season</option>
-                {getResults(seasons.data).map((season) => (
+                {seasonRows.map((season) => (
                   <option key={season.id} value={season.id}>{season.name}</option>
                 ))}
               </select>

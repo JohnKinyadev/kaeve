@@ -1141,7 +1141,8 @@ def guarantor_search(request):
 @role_required(ADMIN_ROLE, MANAGER_ROLE, SECRETARY_ROLE, FIELD_OFFICER_ROLE)
 def dashboard_summary(request):
     active_season = Season.objects.filter(is_active=True, is_closed=False).first()
-    deliveries = Delivery.objects.all()
+    all_deliveries = Delivery.objects.all()
+    deliveries = all_deliveries
     loans = Loan.objects.all()
 
     if active_season:
@@ -1154,6 +1155,7 @@ def dashboard_summary(request):
         "members_count": Member.objects.count(),
         "today_cherry_kg": deliveries.filter(delivery_date=today).aggregate(total=Sum("weight_kg"))["total"] or 0,
         "season_cherry_kg": deliveries.aggregate(total=Sum("weight_kg"))["total"] or 0,
+        "total_cherry_kg": all_deliveries.aggregate(total=Sum("weight_kg"))["total"] or 0,
         "pending_loans": loans.filter(status=Loan.Status.PENDING).count(),
         "approved_loan_total": loans.filter(status=Loan.Status.APPROVED).aggregate(total=Sum("amount"))["total"] or 0,
         "deliveries_count": deliveries.aggregate(count=Count("id"))["count"],
