@@ -36,10 +36,18 @@ function mergeBatchIntoData(data, batch) {
 export function MillingPage() {
   const batches = useApiResource("/api/milling-batches/?ordering=-milled_on");
   const seasons = useApiResource("/api/seasons/?is_active=true&is_closed=false");
+  const inventory = useApiResource("/api/inventory-stocks/?stock_type=cherry");
   const [form, setForm] = useState(emptyForm);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [message, setMessage] = useState("");
   const rows = getResults(batches.data);
+  const inventoryRows = getResults(inventory.data);
+  const selectedSeasonId = form.season || getResults(seasons.data)[0]?.id || "";
+  const selectedSeasonCherryAvailable = inventoryRows
+    .filter((row) => String(row.season) === String(selectedSeasonId))
+    .reduce((sum, row) => sum + Number(row.quantity_kg || 0), 0);
+  const editingBatch = rows.find((row) => row.id === form.id);
+  const maxCherryForForm = selectedSeasonCherryAvailable + (editingBatch ? Number(editingBatch.cherry_in_kg || 0) : 0);
   const totals = useMemo(
     () => ({
       cherry: rows.reduce((sum, row) => sum + Number(row.cherry_in_kg || 0), 0),
@@ -91,6 +99,7 @@ export function MillingPage() {
       setForm(emptyForm);
       setIsFormOpen(false);
       await batches.reload();
+      await inventory.reload();
       setMessage("Milling batch saved.");
     } catch (err) {
       setMessage(err.message || "Unable to save milling batch.");
@@ -99,11 +108,12 @@ export function MillingPage() {
 
   return (
     <div className="page-stack">
-      {(batches.error || seasons.error) && <div className="form-error">{batches.error || seasons.error}</div>}
+      {(batches.error || seasons.error || inventory.error) && <div className="form-error">{batches.error || seasons.error || inventory.error}</div>}
       {message && <div className={message.includes("Unable") ? "form-error" : "form-success"}>{message}</div>}
       <section className="stat-grid">
         <StatCard icon={Factory} label="Batches" value={rows.length} />
-        <StatCard icon={Factory} label="Cherry In" value={formatKg(totals.cherry)} />
+        <StatCard icon={Factory} label="Cherry Available" value={formatKg(selectedSeasonCherryAvailable)} detail="Matches inventory stock" />
+        <StatCard icon={Factory} label="Cherry Milled" value={formatKg(totals.cherry)} />
         <StatCard icon={Factory} label="Green Beans" value={formatKg(totals.green)} detail={`${outturn}% outturn`} />
       </section>
       <section className="toolbar">
@@ -123,7 +133,11 @@ export function MillingPage() {
               </select>
             </label>
             <Input label="Batch number" value={form.batch_number} onChange={(event) => updateForm("batch_number", event.target.value)} required />
-            <Input label="Cherry in kg" type="number" step="0.01" value={form.cherry_in_kg} onChange={(event) => updateForm("cherry_in_kg", event.target.value)} required />
+            <Input label="Cherry in kg" type="number" min="0.01" max={maxCherryForForm.toFixed(2)} step="0.01" value={form.cherry_in_kg} onChange={(event) => updateForm("cherry_in_kg", event.target.value)} required />
+            <div className="loan-policy-note field-wide">
+              <strong>Available for milling: {formatKg(maxCherryForForm)}</strong>
+              <span>This is the same cherry stock shown in inventory for the selected season.</span>
+            </div>
             <Input label="Parchment out kg" type="number" step="0.01" value={form.parchment_out_kg} onChange={(event) => updateForm("parchment_out_kg", event.target.value)} />
             <Input label="Green bean out kg" type="number" step="0.01" value={form.green_bean_out_kg} onChange={(event) => updateForm("green_bean_out_kg", event.target.value)} />
             <Input label="Milled on" type="date" value={form.milled_on} onChange={(event) => updateForm("milled_on", event.target.value)} />

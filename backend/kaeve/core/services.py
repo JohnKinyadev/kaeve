@@ -132,6 +132,41 @@ def update_inventory_quantity(season, stock_type, warehouse, delta_kg):
     return stock
 
 
+def get_inventory_quantity(season, stock_type):
+    return InventoryStock.objects.filter(
+        season=season,
+        stock_type=stock_type,
+    ).aggregate(total=Sum("quantity_kg"))["total"] or Decimal("0.00")
+
+
+def consume_inventory_quantity(season, stock_type, quantity_kg, preferred_warehouse="Milling"):
+    quantity_kg = Decimal(quantity_kg or 0)
+    if quantity_kg <= 0:
+        return
+
+    available_kg = get_inventory_quantity(season, stock_type)
+    if quantity_kg > available_kg:
+        raise ValueError(
+            f"Only {available_kg} kg of {InventoryStock.StockType(stock_type).label} is available for milling."
+        )
+
+    remaining_kg = quantity_kg
+    stocks = list(
+        InventoryStock.objects.select_for_update()
+        .filter(season=season, stock_type=stock_type, quantity_kg__gt=0)
+        .order_by("warehouse", "id")
+    )
+    stocks.sort(key=lambda stock: (stock.warehouse != preferred_warehouse, stock.warehouse, stock.id))
+
+    for stock in stocks:
+        if remaining_kg <= 0:
+            break
+        used_kg = min(stock.quantity_kg, remaining_kg)
+        stock.quantity_kg = stock.quantity_kg - used_kg
+        stock.save(update_fields=["quantity_kg", "updated_at"])
+        remaining_kg -= used_kg
+
+
 def sync_delivery_effects(delivery, previous=None):
     if previous:
         update_inventory_quantity(
@@ -204,7 +239,7 @@ def sync_milling_batch_effects(batch, previous=None):
             -previous["green_bean_out_kg"],
         )
 
-    update_inventory_quantity(batch.season, InventoryStock.StockType.CHERRY, warehouse, -batch.cherry_in_kg)
+    consume_inventory_quantity(batch.season, InventoryStock.StockType.CHERRY, batch.cherry_in_kg, warehouse)
     update_inventory_quantity(batch.season, InventoryStock.StockType.PARCHMENT, warehouse, batch.parchment_out_kg)
     update_inventory_quantity(batch.season, InventoryStock.StockType.GREEN_BEAN, warehouse, batch.green_bean_out_kg)
 

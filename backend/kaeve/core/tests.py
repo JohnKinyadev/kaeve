@@ -818,6 +818,38 @@ class CrudApiTests(TestCase):
         self.assertEqual(cherry.quantity_kg, Decimal("0.00"))
         self.assertEqual(green.quantity_kg, Decimal("18.00"))
 
+    def test_milling_batch_can_use_cherry_from_collection_point_stock(self):
+        season = self.create_season()
+        InventoryStock.objects.create(
+            season=season,
+            stock_type=InventoryStock.StockType.CHERRY,
+            warehouse="Kiamumbi",
+            quantity_kg=Decimal("120.00"),
+        )
+
+        response = self.client.post(
+            "/api/milling-batches/",
+            json.dumps(
+                {
+                    "season": season.id,
+                    "batch_number": "MB-CP-001",
+                    "cherry_in_kg": "100.00",
+                    "parchment_out_kg": "22.00",
+                    "green_bean_out_kg": "18.00",
+                }
+            ),
+            content_type="application/json",
+            **self.api_headers(),
+        )
+
+        self.assertEqual(response.status_code, 201)
+        collection_stock = InventoryStock.objects.get(
+            season=season,
+            stock_type=InventoryStock.StockType.CHERRY,
+            warehouse="Kiamumbi",
+        )
+        self.assertEqual(collection_stock.quantity_kg, Decimal("20.00"))
+
     def test_loan_approve_action_updates_status_and_ledger(self):
         member = self.create_member()
         season = self.create_season()
